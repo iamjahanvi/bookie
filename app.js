@@ -137,7 +137,7 @@ function statsHTML() {
   const fin = books.filter(b => b.status === 'finished' && (b.finished || '').startsWith(yr));
   const pages = fin.reduce((s, b) => s + (+b.pages || 0), 0);
   const lines = allLines().length;
-  const rated = books.filter(b => b.rating > 0); const avg = rated.length ? rated.reduce((s, b) => s + b.rating, 0) / rated.length : 0;
+  const nowReading = books.filter(b => (b.status || 'reading') === 'reading').length;
   const byMonth = Array.from({ length: 12 }, () => []); fin.forEach(b => { const m = +(b.finished || '').slice(5, 7) - 1; if (m >= 0) byMonth[m].push(b) });
   const most = books.slice().sort((a, b) => (b.quotes || []).length - (a.quotes || []).length)[0];
   return `<section class="stats"><h2>${yr}, in reading</h2>
@@ -145,7 +145,7 @@ function statsHTML() {
       <div class="stat"><b>${fin.length}</b><span>finished</span></div>
       <div class="stat"><b>${pages >= 1000 ? (pages / 1000).toFixed(1) + 'k' : pages}</b><span>pages</span></div>
       <div class="stat"><b>${lines}</b><span>lines kept</span></div>
-      <div class="stat"><b>${avg ? avg.toFixed(1) : '–'}</b><span>avg ★</span></div>
+      <div class="stat"><b>${nowReading}</b><span>on the go</span></div>
     </div>
     <div class="months">${byMonth.map(arr => `<div class="mo">${arr.slice(0, 7).map(b => `<i style="background:${colorsOf(b).bg}" title="${esc(b.title)}"></i>`).join('')}</div>`).join('')}</div>
     <div class="mo-l">${MONTHS.map(m => `<span>${m}</span>`).join('')}</div>
@@ -159,26 +159,49 @@ function pullHTML() {
   return `<section class="pull"><div class="lbl"><span>From your margins</span>${L.length > 1 ? '<button class="linkbtn" id="another">Another</button>' : ''}</div>
     <blockquote data-open="${esc(b.id)}">${esc(q.text)}</blockquote><cite>— ${esc(b.title)}${b.author ? ', ' + esc(b.author) : ''}${q.page ? ' · p. ' + esc(q.page) : ''}</cite></section>`;
 }
+let shelf3d = null, shelf3dState = 'idle';
+function coverSources(url) {
+  if (url.startsWith('data:')) return [url];
+  return S.cfg?.supabaseUrl ? [proxied(url), url] : [url, proxied(url)];
+}
+async function init3d() {
+  shelf3dState = 'loading';
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2'); if (!gl) throw new Error('no webgl2');
+    const m = await import('./shelf3d.js');
+    shelf3d = await m.createShelf3D($('#bc'), { colorsOf, coverSrc: coverSources, onPick: id => openDetail(id) });
+    shelf3dState = 'ready'; $('#bc').classList.add('ready');
+  } catch (e) { console.warn('3D bookcase unavailable, using flat shelves', e); shelf3dState = 'failed' }
+  refresh();
+}
 function renderHome() {
   const app = $('#app');
   if (S.mode === 'loading') { app.innerHTML = '<div class="loading">Dusting the shelves…</div>'; return }
   if (S.mode === 'gate') return;
+  if (shelf3d && !document.body.contains(shelf3d.el)) { shelf3d.destroy(); shelf3d = null; shelf3dState = 'idle' }
   const books = [...S.books.values()];
-  const by = k => books.filter(b => (b.status || 'reading') === k);
-  const reading = by('reading').sort((a, b) => (b.started || '').localeCompare(a.started || ''));
-  const finished = by('finished').sort((a, b) => (b.finished || '').localeCompare(a.finished || ''));
-  const want = by('want').sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const d = new Date();
-  app.innerHTML = `<header class="mast"><div class="kicker">A reading log &amp; commonplace book</div><h1>Book<em>ie</em></h1>
-    <div class="meta"><span>${d.toLocaleDateString('en-GB', { weekday: 'long' })}</span><span>${books.length} vol${books.length === 1 ? '' : 's'}.</span><span>${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span></div></header>
-    ${S.note ? `<div class="banner">${esc(S.note)}</div>` : ''}
-    ${pullHTML()}
-    ${books.length ? `<div class="viewtoggle"><div class="seg">${[['spines', 'Spines'], ['covers', 'Covers']].map(([k, l]) => `<button data-view="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>` : ''}
-    ${shelfHTML('reading', reading)}${shelfHTML('finished', finished)}${shelfHTML('want', want)}
-    ${books.length ? statsHTML() : ''}
+  if (!$('#home')) {
+    app.innerHTML = `<div id="home">
+      <header class="topbar"><h1 class="wm">Book<em>ie</em></h1><div class="seg mini" id="vt">${[['spines', 'Spines'], ['covers', 'Covers']].map(([k, l]) => `<button data-view="${k}">${l}</button>`).join('')}</div></header>
+      <div class="bookcase3d" id="bc"><div class="bc-hint" id="bc-hint"></div></div>
+      <div id="below"></div></div>`;
+    $$('[data-view]', app).forEach(b => b.onclick = () => { S.view = b.dataset.view; pref.set('view', S.view); refresh() });
+    if (shelf3dState === 'idle') init3d();
+  }
+  $$('#vt button').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
+  $('#vt').style.visibility = books.length ? 'visible' : 'hidden';
+  const bc = $('#bc');
+  if (shelf3d) shelf3d.update(books, S.view);
+  else if (shelf3dState === 'failed') {
+    const by = k => books.filter(b => (b.status || 'reading') === k);
+    bc.classList.add('flat');
+    bc.innerHTML = shelfHTML('reading', by('reading')) + shelfHTML('finished', by('finished').sort((a, b) => (b.finished || '').localeCompare(a.finished || ''))) + shelfHTML('want', by('want'));
+    $$('[data-id]', bc).forEach(s => s.onclick = () => { s.classList.add('pulled'); setTimeout(() => { openDetail(s.dataset.id); s.classList.remove('pulled') }, 200) });
+  }
+  const hint = $('#bc-hint'); if (hint) hint.textContent = books.length ? '' : 'Your shelves are empty. Add your first book.';
+  const below = $('#below');
+  below.innerHTML = `${S.note ? `<div class="banner">${esc(S.note)}</div>` : ''}${pullHTML()}${books.length ? statsHTML() : ''}
     ${S.mode === 'cloud' ? '<button class="signout" id="signout">Sign out</button>' : ''}`;
-  $$('[data-id]', app).forEach(s => s.onclick = () => { s.classList.add('pulled'); setTimeout(() => { openDetail(s.dataset.id); s.classList.remove('pulled') }, 200) });
-  $$('[data-view]', app).forEach(b => b.onclick = () => { S.view = b.dataset.view; pref.set('view', S.view); renderHome() });
   const an = $('#another'); if (an) an.onclick = () => { const n = allLines().length; let i; do { i = Math.floor(Math.random() * n) } while (n > 1 && i === S.lineIdx); S.lineIdx = i; renderHome() };
   const bq = $('.pull blockquote'); if (bq) bq.onclick = () => openDetail(bq.dataset.open);
   const so = $('#signout'); if (so) so.onclick = () => confirmSheet('Sign out?', 'Your shelf stays safe in your account.', 'Sign out', async () => { await S.sb.auth.signOut(); try { localStorage.removeItem(CACHE()) } catch { } location.reload() });
@@ -192,8 +215,8 @@ function coverHTML(b, cls = 'cover') {
     <div><div class="ct">${esc(b.title || 'Untitled')}</div><div class="cr"></div></div><div class="ca">${esc(b.author || '')}</div>
     ${b.coverUrl ? `<img src="${esc(b.coverUrl)}" alt="" onerror="this.remove()">` : ''}</div>`;
 }
-function openDetail(id) { S.openId = id; renderDetail(); const d = $('#detail'); d.scrollTop = 0; d.setAttribute('aria-hidden', 'false'); requestAnimationFrame(() => d.classList.add('open')) }
-function closeDetail() { const d = $('#detail'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); S.openId = null; setTimeout(() => { if (!S.openId) d.innerHTML = '' }, 400) }
+function openDetail(id) { S.openId = id; renderDetail(); const d = $('#detail'); d.scrollTop = 0; d.setAttribute('aria-hidden', 'false'); requestAnimationFrame(() => d.classList.add('open')); clearTimeout(openDetail._p); openDetail._p = setTimeout(() => S.openId && shelf3d?.pause(true), 450) }
+function closeDetail() { clearTimeout(openDetail._p); shelf3d?.pause(false); shelf3d?.pushBack(); const d = $('#detail'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); S.openId = null; setTimeout(() => { if (!S.openId) d.innerHTML = '' }, 400) }
 function renderDetail() {
   const b = S.books.get(S.openId), d = $('#detail');
   if (!b) { if (S.openId) closeDetail(); return }
@@ -207,9 +230,7 @@ function renderDetail() {
     ${b.blurb ? `<p class="blurb">${esc(b.blurb)}</p>` : ''}
     <div class="panel">
       <div class="full"><span class="lab">Status</span><div class="seg">${['want', 'reading', 'finished'].map(k => `<button data-st="${k}" class="${st === k ? 'on' : ''}">${STATUS[k]}</button>`).join('')}</div></div>
-      <div><span class="lab">Started</span><input type="date" class="dinput" id="d-start" value="${esc(b.started || '')}"></div>
-      <div><span class="lab">Finished</span><input type="date" class="dinput" id="d-fin" value="${esc(b.finished || '')}"></div>
-      <div class="full" style="border-bottom:0"><span class="lab">Your rating</span><div class="stars">${[1, 2, 3, 4, 5].map(n => `<button data-r="${n}" class="${(b.rating || 0) >= n ? 'on' : ''}" aria-label="${n} stars">★</button>`).join('')}</div></div>
+      <div class="full" style="border-bottom:0"><span class="lab">Finished reading on</span><input type="date" class="dinput" id="d-fin" value="${esc(b.finished || '')}"></div>
     </div>
     <div class="lines-h"><h2>Lines</h2><button class="btn primary" id="d-add">${ICON.plus} Add a line</button></div>
     <div id="slips">${quotes.length ? quotes.map(q => `<div class="slip" style="--bk:${bg}" data-q="${esc(q.id)}">
@@ -222,10 +243,8 @@ function renderDetail() {
   $('#d-back').onclick = closeDetail;
   $('#d-edit').onclick = () => bookSheet(b);
   $('#d-add').onclick = () => quoteSheet(b);
-  $$('.seg button', d).forEach(x => x.onclick = () => { const nb = clone(b); nb.status = x.dataset.st; if (nb.status === 'reading' && !nb.started) nb.started = today(); if (nb.status === 'finished' && !nb.finished) nb.finished = today(); saveBook(nb); if (nb.status === 'finished' && b.status !== 'finished') toast('Another one for the finished shelf.') });
-  $('#d-start').onchange = e => { const nb = clone(b); nb.started = e.target.value || null; saveBook(nb) };
+  $$('.seg button', d).forEach(x => x.onclick = () => { const nb = clone(b); nb.status = x.dataset.st; if (nb.status === 'finished' && !nb.finished) nb.finished = today(); saveBook(nb); if (nb.status === 'finished' && b.status !== 'finished') toast('Another one for the finished shelf.') });
   $('#d-fin').onchange = e => { const nb = clone(b); nb.finished = e.target.value || null; if (nb.finished) nb.status = 'finished'; saveBook(nb) };
-  $$('.stars button', d).forEach(x => x.onclick = () => { const nb = clone(b); const r = +x.dataset.r; nb.rating = nb.rating === r ? 0 : r; saveBook(nb) });
   $$('.slip', d).forEach(s => {
     const q = (b.quotes || []).find(q => q.id === s.dataset.q);
     s.querySelector('[data-a=share]').onclick = () => shareSheet(b, q);
@@ -293,7 +312,7 @@ const firstSentence = s => { const t = String(s || '').replace(/<[^>]+>/g, ''); 
 
 function bookSheet(existing) {
   openSheet((body, close) => {
-    const b = existing ? clone(existing) : { id: 'b-' + rid(), title: '', author: '', year: null, pages: null, genre: '', blurb: '', status: 'reading', started: today(), finished: null, rating: 0, quotes: [], createdAt: Date.now() };
+    const b = existing ? clone(existing) : { id: 'b-' + rid(), title: '', author: '', year: null, pages: null, genre: '', blurb: '', status: 'reading', finished: null, quotes: [], createdAt: Date.now() };
     let ctl = null, results = [], chosen = null, pal = [], ownCover = null;
     close.onclose = () => ctl?.abort();
     body.innerHTML = `<h2>${existing ? 'Edit book' : 'Add a book'}</h2>
