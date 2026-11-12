@@ -148,7 +148,7 @@ export async function createShelf3D(el, opts) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   el.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#2a1d13');
@@ -159,12 +159,12 @@ export async function createShelf3D(el, opts) {
 
   scene.add(new THREE.HemisphereLight(0xfff1dc, 0x3b2817, 0.35));
   const key = new THREE.DirectionalLight(0xffdcb0, 3.1); key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 4;
+  key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 16;
   scene.add(key, key.target);
   const fill = new THREE.DirectionalLight(0xfff6ea, 0.45); fill.position.set(0, H * .45, 200); scene.add(fill);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
-  const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } return t; };
+  const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; } return t; };
   const oak = woodCanvases(4, [178, 126, 78], [112, 70, 38], 1024, 256, 11, 1);
   const walnut = woodCanvases(9, [96, 64, 40], [52, 32, 18], 1024, 512, 30, .7);
   const boardMap = tex(oak.col, true, 1), boardBump = tex(oak.bump, false, 1);
@@ -232,8 +232,8 @@ export async function createShelf3D(el, opts) {
       plate.position.set(-visW / 2 + 1.4 + 6.25, y, 1.9); caseGroup.add(plate);
     });
     // light
-    key.position.set(-visW * .9 - 20, H + 40, 110); key.target.position.set(0, H / 2, -DEPTH / 2);
-    const sc = key.shadow.camera; sc.left = -W / 2 - 10; sc.right = W / 2 + 10; sc.top = H; sc.bottom = -H; sc.near = 1; sc.far = 400; sc.updateProjectionMatrix();
+    key.position.set(-visW * .22 - 6, H + 55, 150); key.target.position.set(0, H / 2, -DEPTH / 2);
+    const sc = key.shadow.camera; const R = Math.max(W, H) * .9 + 40; sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 400; sc.updateProjectionMatrix();
   }
 
   function dimsOf(b) {
