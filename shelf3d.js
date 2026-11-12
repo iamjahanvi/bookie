@@ -3,9 +3,9 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-const BT = 2.4;      // board thickness
-const HC = 30;       // clear height of a compartment
-const PL = 12;       // plinth (kickboard) height
+const BT = 2.0;      // board thickness
+const HC = 25;       // clear height of a compartment
+const PL = 9;        // plinth (kickboard) height
 const DEPTH = 26;    // shelf depth
 const H = PL + BT + 3 * (HC + BT);
 const FOV = 24;
@@ -335,9 +335,9 @@ export async function createShelf3D(el, opts) {
     ROWS.forEach((st, j) => {
       const y = PL + BT / 2 + j * (HC + BT);
       const n = books.filter(b => (b.status || 'reading') === st).length;
-      const plate = new THREE.Mesh(new THREE.PlaneGeometry(12.5, 2.3),
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(11, 1.9),
         new THREE.MeshStandardMaterial({ map: tex(brassCanvas(`${LABEL[st]} · ${String(n).padStart(2, '0')}`)), metalness: .85, roughness: .32 }));
-      plate.position.set(-visW / 2 + 1.5 + 1 + 6.25, y, 1.9); caseGroup.add(plate);
+      plate.position.set(-visW / 2 + 1.2 + 1 + 5.5, y, 1.7); caseGroup.add(plate);
     });
     // light
     key.position.set(-visW * .22 - 6, H + 55, 150); key.target.position.set(0, H / 2, -DEPTH / 2);
@@ -347,11 +347,11 @@ export async function createShelf3D(el, opts) {
   function dimsOf(b) {
     const h = hashStr(b.id), r = n => ((h >>> n) & 1023) / 1023;
     // format: mass-market paperback, trade paperback, hardback, tall art/large-format
-    const f = r(3); const base = f < .2 ? 17.4 : f < .62 ? 20.3 : f < .9 ? 23.4 : 26.2;
-    const ht = Math.min(HC - 2.6, base + (r(7) - .5) * 1.6);
+    const f = r(3); const base = f < .2 ? 18.2 : f < .62 ? 20.4 : f < .9 ? 22.4 : 23.6;
+    const ht = Math.min(HC - 1.1, base + (r(7) - .5) * 1.2);
     const pages = b.pages || (140 + Math.round(r(11) * 420));
     const paper = f < .2 ? .0058 : .0068;                     // thicker stock on hardbacks
-    const t = Math.max(.95, Math.min(6.4, .35 + pages * paper + (f >= .62 ? .5 : 0)));
+    const t = Math.max(1.6, Math.min(7.2, (.35 + pages * paper + (f >= .62 ? .5 : 0)) * 1.3));
     return { h: ht, t, d: ht * (f < .2 ? .62 : .67) };
   }
   // ---- real images: covers from Open Library etc., spines from the cover or a photo ----
@@ -393,8 +393,7 @@ export async function createShelf3D(el, opts) {
     x.save();
     if (land) { x.translate(w, 0); x.rotate(Math.PI / 2); }
     const W = land ? h : w, Hh = land ? w : h;
-    const s = Math.max(W / img.naturalWidth, Hh / img.naturalHeight);
-    x.drawImage(img, (W - img.naturalWidth * s) / 2, (Hh - img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
+    x.drawImage(img, 0, 0, W, Hh);   // show the whole spine, stretched to this book's shape
     x.restore(); spineShading(x, w, h); return c;
   }
   function spineFromCover(b, dims, col, img) {
