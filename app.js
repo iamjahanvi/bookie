@@ -17,7 +17,7 @@ function colorsOf(b) { const h = hash(b.id); const bg = validHex(b.color) ? b.co
 const surname = a => (a || '').split(/,|&| and /)[0].trim().split(/\s+/).pop() || '';
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const STATUS = { want: 'Want to read', reading: 'Reading', finished: 'Finished' };
-const proxied = url => '/api/cover?u=' + encodeURIComponent(url);
+const proxied = url => 'api/cover?u=' + encodeURIComponent(url);
 const olCover = (id, size = 'L') => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg`;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2800) }
 const ICON = {
@@ -46,7 +46,7 @@ async function compress(file, max = 1600, q = .86) {
 const blobToDataURL = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b) });
 /* Pull a spine colour + accent out of a cover image. */
 async function coverPalette(src) {
-  const img = await loadImg(src.startsWith('blob:') ? src : proxied(src), true);
+  const img = src.startsWith('blob:') || src.startsWith('data:') ? await loadImg(src, true) : await loadImg(proxied(src), true).catch(() => loadImg(src, true));
   const c = document.createElement('canvas'); const w = c.width = 40, h = c.height = 60;
   const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, w, h);
   const d = x.getImageData(0, 0, w, h).data; const buckets = new Map();
@@ -408,7 +408,7 @@ function quoteSheet(book, existing) {
       try {
         photo = await compress(f, 1600, .85);
         const { data: { session } } = await S.sb.auth.getSession();
-        const r = await fetch('/api/transcribe', {
+        const r = await fetch('api/transcribe', {
           method: 'POST', signal: ctl.signal,
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
           body: JSON.stringify({ image: await blobToDataURL(photo), title: book.title, author: book.author })
@@ -447,7 +447,7 @@ function quoteSheet(book, existing) {
 async function drawCard(canvas, b, q, style) {
   const W = 1080, H = 1350; canvas.width = W; canvas.height = H; const x = canvas.getContext('2d');
   try { await Promise.all(['400 60px Fraunces', 'italic 400 60px Fraunces', '300 60px Fraunces', '400 30px "IBM Plex Mono"'].map(f => document.fonts.load(f))) } catch { }
-  let coverImg = null; if (b.coverUrl) { try { coverImg = await loadImg(b.coverUrl.startsWith('data:') ? b.coverUrl : proxied(b.coverUrl), true) } catch { } }
+  let coverImg = null; if (b.coverUrl) { try { coverImg = b.coverUrl.startsWith('data:') ? await loadImg(b.coverUrl, true) : await loadImg(proxied(b.coverUrl), true).catch(() => loadImg(b.coverUrl, true)) } catch { } }
   const { bg, acc, fg } = colorsOf(b);
   let base, ink, mute, mark;
   if (style === 'spine') { base = bg; ink = fg; mute = fg; mark = acc }
@@ -513,7 +513,7 @@ function renderGate() {
     <p class="hint" id="g-hint"></p></div>`;
   $('#g-form').onsubmit = async e => {
     e.preventDefault(); const email = $('#g-email').value.trim(); const btn = $('#g-go'); btn.disabled = true;
-    const { error } = await S.sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin } });
+    const { error } = await S.sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
     btn.disabled = false;
     $('#g-hint').textContent = error ? (error.message || 'Couldn’t send — try again.') : 'Check your inbox and tap the link on this device.';
   };
@@ -529,10 +529,10 @@ async function startCloud(session) {
 }
 (async () => {
   const demo = new URLSearchParams(location.search).has('demo');
-  try { S.cfg = demo ? null : await (await fetch('/api/config')).json() } catch { S.cfg = null }
+  try { S.cfg = demo ? null : await (await fetch('api/config')).json() } catch { S.cfg = null }
   if (!S.cfg?.supabaseUrl) {
     S.mode = 'local'; loadCache();
-    S.note = demo ? 'Demo mode — saving in this browser only.' : 'Not connected to a database yet — saving in this browser only. See the README to set up Supabase.';
+    S.note = demo ? 'Demo mode — saving in this browser only.' : 'Preview — saving in this browser only. Sign-in and sync arrive with the Vercel version.';
     refresh(); return;
   }
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
