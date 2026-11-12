@@ -1,0 +1,8 @@
+{
+  "name": "bookie",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Bookie — a bookshelf for what you read and the lines you keep.",
+  "type": "module",
+  "engines": { "node": ">=18" }
+}
