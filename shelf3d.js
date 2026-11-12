@@ -323,13 +323,13 @@ export async function createShelf3D(el, opts) {
     const POST = 1.2;
     [-1, 1].forEach(sgn => {
       const post = new THREE.Mesh(new THREE.BoxGeometry(POST, H + 10, DEPTH + 2), boardMat(H, DEPTH));
-      post.material.color.set('#c99a6a'); post.material.map.rotation = Math.PI / 2; post.material.bumpMap.rotation = Math.PI / 2;
+      post.material.emissive.set('#3a2410'); post.material.emissiveIntensity = .55; post.material.map.rotation = Math.PI / 2; post.material.bumpMap.rotation = Math.PI / 2;
       post.position.set(sgn * (visW / 2 - POST / 2), H / 2, -DEPTH / 2 + .9); post.castShadow = post.receiveShadow = true; caseGroup.add(post);
     });
     // plinth
-    const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); pm.material.color.set('#c79a6a');
+    const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); 
     pm.position.set(0, PL / 2, -1.2); pm.receiveShadow = true; caseGroup.add(pm);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#7a5636', roughness: 1 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#d8b48a', roughness: 1 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 20); caseGroup.add(floor);
     // brass label plates
     ROWS.forEach((st, j) => {
