@@ -246,11 +246,11 @@ export async function createShelf3D(el, opts) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.18;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.28;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   el.appendChild(renderer.domElement);
 
-  const scene = new THREE.Scene(); scene.background = new THREE.Color('#b98a5c');
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#5a3820');
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.45;
@@ -265,8 +265,8 @@ export async function createShelf3D(el, opts) {
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; } return t; };
-  const oak = mapleCanvases(4, [236, 202, 156], [176, 128, 80], 2048, 256, { lines: 70, cathedral: .25, knots: 1, contrast: 1.35 });
-  const walnut = mapleCanvases(9, [226, 186, 136], [168, 118, 70], 2048, 1024, { lines: 150, cathedral: .45, knots: 3, contrast: 1.3 });
+  const oak = mapleCanvases(4, [156, 102, 62], [86, 50, 26], 2048, 256, { lines: 70, cathedral: .25, knots: 1, contrast: 1.35 });
+  const walnut = mapleCanvases(9, [146, 94, 56], [80, 46, 24], 2048, 1024, { lines: 150, cathedral: .45, knots: 3, contrast: 1.3 });
   const boardMap = tex(oak.col, true, 1), boardBump = tex(oak.bump, false, 1);
   const backMap = tex(walnut.col, true, 1), backBump = tex(walnut.bump, false, 1);
   const clothTex = tex(clothCanvas(), false, 1); clothTex.repeat.set(3, 3);
@@ -329,7 +329,7 @@ export async function createShelf3D(el, opts) {
     // plinth
     const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); 
     pm.position.set(0, PL / 2, -1.2); pm.receiveShadow = true; caseGroup.add(pm);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#d8b48a', roughness: 1 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#6e4527', roughness: 1 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 20); caseGroup.add(floor);
     // brass label plates
     ROWS.forEach((st, j) => {

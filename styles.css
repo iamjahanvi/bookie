@@ -251,7 +251,7 @@ textarea.inp{border:1px solid var(--rule);background:var(--card);padding:12px;fo
 .seg.mini{width:150px}.seg.mini button{font-size:13px;padding:5px 4px}
 .bookcase3d{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:8px;
   height:calc(100vh - 66px - var(--safe-t));height:calc(100svh - 66px - var(--safe-t));min-height:460px;
-  background:radial-gradient(120% 80% at 50% 20%,#4a3422,#22170e);touch-action:pan-y;overflow:hidden;
+  background:#5a3820;touch-action:pan-y;overflow:hidden;
   -webkit-user-select:none;user-select:none}
 .bookcase3d canvas{display:block;width:100%!important;height:100%!important;opacity:0;transition:opacity .6s}
 .bookcase3d.ready canvas{opacity:1}
