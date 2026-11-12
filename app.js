@@ -179,17 +179,15 @@ function renderHome() {
   if (S.mode === 'loading') { app.innerHTML = '<div class="loading">Dusting the shelves…</div>'; return }
   if (S.mode === 'gate') return;
   if (shelf3d && !document.body.contains(shelf3d.el)) { shelf3d.destroy(); shelf3d = null; shelf3dState = 'idle' }
+  S.view = 'spines';
   const books = [...S.books.values()];
   if (!$('#home')) {
-    app.innerHTML = `<div id="home">
-      <header class="topbar"><h1 class="wm">Book<em>ie</em></h1><div class="seg mini" id="vt">${[['spines', 'Spines'], ['covers', 'Covers']].map(([k, l]) => `<button data-view="${k}">${l}</button>`).join('')}</div></header>
-      <div class="bookcase3d" id="bc"><div class="bc-hint" id="bc-hint"></div></div>
-      <div id="below"></div></div>`;
-    $$('[data-view]', app).forEach(b => b.onclick = () => { S.view = b.dataset.view; pref.set('view', S.view); refresh() });
+    document.body.classList.add('home-on');
+    app.innerHTML = `<div id="home"><div class="bookcase3d" id="bc"><div class="bc-hint" id="bc-hint"></div></div>
+      <button class="morebtn" id="more" aria-label="Lines and stats">Lines &amp; stats</button></div>`;
+    $('#more').onclick = moreSheet;
     if (shelf3dState === 'idle') init3d();
   }
-  $$('#vt button').forEach(b => b.classList.toggle('on', b.dataset.view === S.view));
-  $('#vt').style.visibility = books.length ? 'visible' : 'hidden';
   const bc = $('#bc');
   if (shelf3d) shelf3d.update(books, S.view);
   else if (shelf3dState === 'failed') {
@@ -199,13 +197,23 @@ function renderHome() {
     $$('[data-id]', bc).forEach(s => s.onclick = () => { s.classList.add('pulled'); setTimeout(() => { openDetail(s.dataset.id); s.classList.remove('pulled') }, 200) });
   }
   const hint = $('#bc-hint'); if (hint) hint.textContent = books.length ? '' : 'Your shelves are empty. Add your first book.';
-  const below = $('#below');
-  below.innerHTML = `${S.note ? `<div class="banner">${esc(S.note)}</div>` : ''}${pullHTML()}${books.length ? statsHTML() : ''}
-    ${S.mode === 'cloud' ? '<button class="signout" id="signout">Sign out</button>' : ''}`;
-  const an = $('#another'); if (an) an.onclick = () => { const n = allLines().length; let i; do { i = Math.floor(Math.random() * n) } while (n > 1 && i === S.lineIdx); S.lineIdx = i; renderHome() };
-  const bq = $('.pull blockquote'); if (bq) bq.onclick = () => openDetail(bq.dataset.open);
-  const so = $('#signout'); if (so) so.onclick = () => confirmSheet('Sign out?', 'Your shelf stays safe in your account.', 'Sign out', async () => { await S.sb.auth.signOut(); try { localStorage.removeItem(CACHE()) } catch { } location.reload() });
   $('#fab').hidden = false;
+}
+function moreSheet() {
+  openSheet((body, close) => {
+    const draw = () => {
+      const books = [...S.books.values()];
+      body.innerHTML = `<h2>Lines &amp; stats</h2>
+        ${S.note ? `<p class="hint" style="margin:6px 0 0">${esc(S.note)}</p>` : ''}
+        ${pullHTML() || '<p class="sub" style="margin-top:14px">Lines you keep will turn up here at random.</p>'}
+        ${books.length ? statsHTML() : ''}
+        ${S.mode === 'cloud' ? '<button class="signout" id="signout">Sign out</button>' : ''}`;
+      const an = $('#another', body); if (an) an.onclick = () => { const n = allLines().length; let i; do { i = Math.floor(Math.random() * n) } while (n > 1 && i === S.lineIdx); S.lineIdx = i; draw() };
+      const bq = $('.pull blockquote', body); if (bq) bq.onclick = () => { close(); openDetail(bq.dataset.open) };
+      const so = $('#signout', body); if (so) so.onclick = () => { close(); confirmSheet('Sign out?', 'Your shelf stays safe in your account.', 'Sign out', async () => { await S.sb.auth.signOut(); try { localStorage.removeItem(CACHE()) } catch { } location.reload() }) };
+    };
+    draw();
+  });
 }
 
 /* ---------- detail ---------- */
@@ -532,7 +540,7 @@ function shareSheet(b, q) {
 
 /* ---------- sign in ---------- */
 function renderGate() {
-  S.mode = 'gate'; $('#fab').hidden = true;
+  S.mode = 'gate'; $('#fab').hidden = true; document.body.classList.remove('home-on');
   const spines = [[34, 110, '#8c2f39'], [46, 120, '#2f4858'], [28, 96, '#c9a227'], [40, 114, '#3c6e47'], [52, 104, '#e6d3ad'], [32, 118, '#4a3f6b']];
   $('#app').innerHTML = `<div class="gate">
     <div class="case" style="width:auto;margin:0 -24px"><div class="mini-shelf" style="padding:0 24px">${spines.map(([w, h, c]) => `<span style="width:${w}px;height:${h}px;background:${c}"></span>`).join('')}</div><div class="plank"><i class="top"></i><i class="front"></i></div></div>
