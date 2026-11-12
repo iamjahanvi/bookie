@@ -203,6 +203,32 @@ function hinges(x, w, h) {
     x.fillStyle = 'rgba(255,255,255,.12)'; x.fillRect(gx + (gx < w / 2 ? 1 : -2), 0, 1, h);
   }
 }
+function wear(x, w, h, b, dims) {
+  const hv = hashStr(b.id + 'w'), st = b.status || 'reading', r = n => ((hv >>> n) & 255) / 255, nz = hash2(hv % 997);
+  // head and tail rubbed pale from being pulled off the shelf
+  for (const top of [true, false]) {
+    const gh = h * .03, y0 = top ? 0 : h - gh;
+    const g = x.createLinearGradient(0, top ? 0 : h, 0, top ? gh : h - gh);
+    g.addColorStop(0, 'rgba(255,244,222,.28)'); g.addColorStop(1, 'rgba(255,244,222,0)'); x.fillStyle = g; x.fillRect(0, y0, w, gh);
+    for (let i = 0; i < w / 3; i++) { x.fillStyle = `rgba(255,248,232,${nz(i, top ? 1 : 2) * .35})`; x.fillRect(nz(i, 3) * w, top ? 0 : h - 3, 2, 2 + nz(i, 4) * 3); }
+  }
+  // sun-faded tops on books that have sat a while
+  if (st !== 'want' && r(3) > .45) {
+    const g = x.createLinearGradient(0, 0, 0, h * .5); g.addColorStop(0, 'rgba(255,238,210,.2)'); g.addColorStop(1, 'rgba(255,238,210,0)');
+    x.fillStyle = g; x.fillRect(0, 0, w, h * .5);
+  }
+  // reading creases down paperback spines
+  if (!dims.hard && st !== 'want') {
+    const n = st === 'finished' ? 2 + Math.floor(r(5) * 3) : 1 + Math.floor(r(5) * 2);
+    for (let i = 0; i < n; i++) {
+      let cx = w * (.22 + r(7 + i) * .56); const y0 = h * (.06 + r(9 + i) * .25), y1 = h * (.6 + r(11 + i) * .34);
+      const pts = []; for (let y = y0; y <= y1; y += h / 50) { cx += (nz(i, y | 0) - .5) * 2.4; pts.push([cx, y]); }
+      for (const [dx, colr, lw] of [[1.2, 'rgba(0,0,0,.09)', 1], [0, 'rgba(255,250,240,.24)', 1]]) {
+        x.beginPath(); pts.forEach(([px, py], k) => (k && nz(k, i + 7) > .18) ? x.lineTo(px + dx, py) : x.moveTo(px + dx, py)); x.strokeStyle = colr; x.lineWidth = lw; x.stroke();
+      }
+    }
+  }
+}
 function textOnHex(hex) { const [r, g, b] = rgbOf(hex); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > .55 ? '#1d1a16' : '#f6efe2'; }
 const STYLES = ['classic', 'cond', 'block', 'quiet', 'heavy', 'stack'];
 function styleOf(b, w) { const hv = hashStr(b.id + 's'); let s = STYLES[hv % STYLES.length]; if (s === 'stack' && w < 3.1 * PPU) s = 'cond'; return s; }
@@ -218,6 +244,7 @@ function spineCanvas(b, dims, col) {
   const ink = col.lumDark ? (hv % 3 === 0 ? '#ead9a8' : col.fg) : col.fg;
   const acc = col.lumDark ? (hv % 2 ? '#d9b866' : col.acc) : col.acc;
   typeSpine(x, w, h, b, styleOf(b, w), ink, acc);
+  wear(x, w, h, b, dims);
   if (dims.hard) hinges(x, w, h);
   return c;
 }
@@ -233,17 +260,40 @@ function coverCanvas(b, col) {
   x.fillStyle = col.fg; x.globalAlpha = .85; x.font = '500 15px "IBM Plex Mono", monospace'; x.fillText((b.author || '').toUpperCase().slice(0, 28), 30, h - 36);
   return c;
 }
-function brassCanvas(text) {
-  const w = 512, h = 112, c = cnv(w, h), x = c.getContext('2d');
-  const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#e8cf8f'); g.addColorStop(.45, '#b88f45'); g.addColorStop(.55, '#a67d36'); g.addColorStop(1, '#d9bc78');
-  x.fillStyle = g; x.fillRect(0, 0, w, h);
-  const hh = hash2(9); for (let i = 0; i < 4000; i++) { x.fillStyle = `rgba(255,255,255,${hh(i, 1) * .08})`; x.fillRect(hh(i, 2) * w, hh(i, 3) * h, 20 * hh(i, 4), 1); }
-  x.strokeStyle = 'rgba(80,55,20,.6)'; x.lineWidth = 4; x.strokeRect(2, 2, w - 4, h - 4);
-  x.fillStyle = '#6b4c1c'; [[16, h / 2], [w - 16, h / 2]].forEach(([cx, cy]) => { x.beginPath(); x.arc(cx, cy, 7, 0, 7); x.fill(); });
-  x.font = '500 40px "IBM Plex Mono", monospace'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillStyle = 'rgba(255,240,200,.55)'; x.fillText(text, w / 2, h / 2 + 2);
-  x.fillStyle = '#3d2a0e'; x.fillText(text, w / 2, h / 2);
-  return c;
+// Brass label plate: colour, roughness and normal maps from one height field.
+function brassMaps(text) {
+  const w = 1024, h = 200, S = 2;
+  const H = cnv(w, h), hx = H.getContext('2d');
+  // height: raised plate with a bevelled rim, two domed screws, engraved (sunk) letters
+  hx.fillStyle = '#000'; hx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 14; i++) { const v = Math.round(255 * (.35 + .65 * i / 13)); hx.fillStyle = `rgb(${v},${v},${v})`; const r = 22 - i; hx.beginPath(); hx.roundRect(i, i, w - 2 * i, h - 2 * i, Math.max(2, r)); hx.fill(); }
+  const sx = [46, w - 46];
+  for (const cx of sx) { const g = hx.createRadialGradient(cx - 4, h / 2 - 4, 1, cx, h / 2, 17); g.addColorStop(0, '#fff'); g.addColorStop(.85, '#bbb'); g.addColorStop(1, '#555'); hx.fillStyle = g; hx.beginPath(); hx.arc(cx, h / 2, 17, 0, 7); hx.fill(); }
+  hx.font = '600 76px "IBM Plex Mono", ui-monospace, monospace'; hx.textAlign = 'center'; hx.textBaseline = 'middle';
+  hx.fillStyle = '#6a6a6a'; hx.fillText(text, w / 2, h / 2 + 3);
+  const hd = hx.getImageData(0, 0, w, h).data;
+  // normal map via sobel
+  const N = cnv(w, h), nx = N.getContext('2d'), ni = nx.createImageData(w, h);
+  const at = (x, y) => hd[((Math.min(h - 1, Math.max(0, y)) * w) + Math.min(w - 1, Math.max(0, x))) * 4] / 255;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (at(x + 1, y) - at(x - 1, y)) * S, dy = (at(x, y + 1) - at(x, y - 1)) * S;
+    const l = Math.hypot(dx, dy, 1), i = (y * w + x) * 4;
+    ni.data[i] = (-dx / l * .5 + .5) * 255; ni.data[i + 1] = (dy / l * .5 + .5) * 255; ni.data[i + 2] = (1 / l * .5 + .5) * 255; ni.data[i + 3] = 255;
+  }
+  nx.putImageData(ni, 0, 0);
+  // colour: polished brass, darker patina in the engraving and screw slots, fingerprints of age
+  const C = cnv(w, h), cx = C.getContext('2d');
+  const g = cx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#d8b46a'); g.addColorStop(.5, '#c39a4c'); g.addColorStop(1, '#a98236'); cx.fillStyle = g; cx.fillRect(0, 0, w, h);
+  const hh = hash2(41);
+  for (let i = 0; i < 9000; i++) { const y = hh(i, 2) * h; cx.fillStyle = `rgba(${hh(i, 5) > .5 ? '255,236,190' : '90,62,20'},${hh(i, 1) * .1})`; cx.fillRect(hh(i, 3) * w, y, 30 + hh(i, 4) * 120, 1); }
+  for (let i = 0; i < 6; i++) { const r = cx.createRadialGradient(hh(i, 9) * w, hh(i, 10) * h, 2, hh(i, 9) * w, hh(i, 10) * h, 60 + hh(i, 11) * 80); r.addColorStop(0, 'rgba(70,50,20,.12)'); r.addColorStop(1, 'rgba(70,50,20,0)'); cx.fillStyle = r; cx.fillRect(0, 0, w, h); }
+  cx.font = hx.font; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#2b1e0c'; cx.fillText(text, w / 2, h / 2 + 3);
+  for (const sxp of sx) { cx.strokeStyle = 'rgba(40,28,10,.85)'; cx.lineWidth = 4; cx.beginPath(); cx.moveTo(sxp - 11, h / 2 - 6); cx.lineTo(sxp + 11, h / 2 + 6); cx.stroke(); }
+  // roughness: brushed metal, rougher in the grooves
+  const R = cnv(w, h), rx = R.getContext('2d'); rx.fillStyle = 'rgb(80,80,80)'; rx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 7000; i++) { const v = 50 + hh(i, 7) * 70; rx.fillStyle = `rgb(${v},${v},${v})`; rx.fillRect(hh(i, 3) * w, hh(i, 2) * h, 40 + hh(i, 6) * 160, 1); }
+  rx.font = hx.font; rx.textAlign = 'center'; rx.textBaseline = 'middle'; rx.fillStyle = 'rgb(220,220,220)'; rx.fillText(text, w / 2, h / 2 + 3);
+  return { color: C, normal: N, rough: R };
 }
 
 /* ---------- the bookcase ---------- */
@@ -258,7 +308,7 @@ export async function createShelf3D(el, opts) {
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   el.appendChild(renderer.domElement);
 
-  const scene = new THREE.Scene(); scene.background = new THREE.Color('#5a3820');
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#3a2414');
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.45;
@@ -273,13 +323,23 @@ export async function createShelf3D(el, opts) {
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; } return t; };
-  const oak = mapleCanvases(4, [156, 102, 62], [86, 50, 26], 2048, 256, { lines: 70, cathedral: .25, knots: 1, contrast: 1.35 });
-  const walnut = mapleCanvases(9, [146, 94, 56], [80, 46, 24], 2048, 1024, { lines: 150, cathedral: .45, knots: 3, contrast: 1.3 });
+  const oak = mapleCanvases(4, [104, 64, 36], [38, 21, 9], 2048, 256, { lines: 70, cathedral: .25, knots: 1, contrast: 1.35 });
+  const walnut = mapleCanvases(9, [92, 56, 31], [34, 18, 8], 2048, 1024, { lines: 150, cathedral: .45, knots: 3, contrast: 1.3 });
   const boardMap = tex(oak.col, true, 1), boardBump = tex(oak.bump, false, 1);
   const backMap = tex(walnut.col, true, 1), backBump = tex(walnut.bump, false, 1);
   const clothTex = tex(clothCanvas(), false, 1); clothTex.repeat.set(3, 3);
   const pagesTex = tex(pagesCanvas());
   const pagesMat = new THREE.MeshStandardMaterial({ map: pagesTex, roughness: .92, metalness: 0 });
+  const gradTex = (() => { const c = cnv(64, 2), x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 64, 0);
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.35, 'rgba(0,0,0,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 2);
+    const t = new THREE.CanvasTexture(c); return t; })();
+  const edgeAOMat = new THREE.MeshBasicMaterial({ map: gradTex, transparent: true, opacity: .5, depthWrite: false });
+  const vGradTex = (() => { const c = cnv(2, 64), x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 64);
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.4, 'rgba(0,0,0,.3)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 2, 64);
+    return new THREE.CanvasTexture(c); })();
+  const floorAOMat = new THREE.MeshBasicMaterial({ map: vGradTex, transparent: true, opacity: .5, depthWrite: false });
+  const ironMat = new THREE.MeshStandardMaterial({ color: '#2a2622', metalness: .7, roughness: .42 });
+  const brassEdge = new THREE.MeshStandardMaterial({ color: '#b48c42', metalness: 1, roughness: .38 });
   const spineNormal = new THREE.CanvasTexture(spineNormalCanvas()); spineNormal.colorSpace = THREE.NoColorSpace; spineNormal.wrapT = THREE.RepeatWrapping;
 
   const caseGroup = new THREE.Group(), booksGroup = new THREE.Group(); scene.add(caseGroup, booksGroup);
@@ -296,12 +356,12 @@ export async function createShelf3D(el, opts) {
     return true;
   }
   function boardMat(lenU, depthU) {
-    const m = new THREE.MeshStandardMaterial({ map: boardMap.clone(), bumpMap: boardBump.clone(), bumpScale: .6, roughness: .5, metalness: 0 });
+    const m = new THREE.MeshPhysicalMaterial({ map: boardMap.clone(), bumpMap: boardBump.clone(), bumpScale: .6, roughness: .55, metalness: 0, clearcoat: .35, clearcoatRoughness: .4 });
     m.map.repeat.set(lenU / 110, depthU / 40); m.bumpMap.repeat.copy(m.map.repeat); m.map.needsUpdate = m.bumpMap.needsUpdate = true;
     return m;
   }
   function buildCase() {
-    caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { m.map && m.map !== backMap && m.map.dispose?.(); m.dispose(); }); } });
+    caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { if (m === ironMat || m === brassEdge) return; m.map && m.map !== backMap && m.map.dispose?.(); m.dispose(); }); } });
     caseGroup.clear();
     const d = camera.position.z; const backScale = (d + DEPTH) / d;
     const W = visW * backScale + 8, BH = H * backScale + 20;
@@ -337,15 +397,19 @@ export async function createShelf3D(el, opts) {
     // plinth
     const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); 
     pm.position.set(0, PL / 2, -1.2); pm.receiveShadow = true; caseGroup.add(pm);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#6e4527', roughness: 1 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#3a2414', roughness: 1 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 20); caseGroup.add(floor);
     // brass label plates
     ROWS.forEach((st, j) => {
       const y = PL + BT / 2 + j * (HC + BT);
       const n = books.filter(b => (b.status || 'reading') === st).length;
-      const plate = new THREE.Mesh(new THREE.PlaneGeometry(11, 1.9),
-        new THREE.MeshStandardMaterial({ map: tex(brassCanvas(`${LABEL[st]} · ${String(n).padStart(2, '0')}`)), metalness: .85, roughness: .32 }));
-      plate.position.set(-visW / 2 + 1.2 + 1 + 5.5, y, 1.7); caseGroup.add(plate);
+      const mp = brassMaps(`${LABEL[st]} · ${String(n).padStart(2, '0')}`);
+      const nm = new THREE.CanvasTexture(mp.normal); nm.colorSpace = THREE.NoColorSpace; nm.anisotropy = aniso;
+      const rm = new THREE.CanvasTexture(mp.rough); rm.colorSpace = THREE.NoColorSpace;
+      const mat = new THREE.MeshPhysicalMaterial({ map: tex(mp.color), normalMap: nm, normalScale: new THREE.Vector2(1.2, 1.2), roughnessMap: rm, roughness: 1, metalness: 1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: 1.6 });
+      const pw = 10.4, ph = pw * 200 / 1024;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, .12), [brassEdge, brassEdge, brassEdge, brassEdge, mat, brassEdge]);
+      plate.position.set(0, y, 1.48); plate.castShadow = true; caseGroup.add(plate);
     });
     // light
     key.position.set(-visW * .22 - 6, H + 55, 150); key.target.position.set(0, H / 2, -DEPTH / 2);
@@ -422,6 +486,7 @@ export async function createShelf3D(el, opts) {
     const dist = Math.hypot(edge[0] - mid[0], edge[1] - mid[1], edge[2] - mid[2]);
     const acc = dist > 60 ? rgbStr(mid) : (light ? '#7a2b22' : '#e2c27a');
     typeSpine(x, w, h, b, styleOf(b, w), ink, acc);
+    wear(x, w, h, b, dims);
     if (dims.hard) hinges(x, w, h);
     spineShading(x, w, h); return c;
   }
@@ -444,6 +509,11 @@ export async function createShelf3D(el, opts) {
     loadImage(b.coverUrl).then(img => { if (img) { t.image = img; t.dispose(); t.needsUpdate = true; needs = true; } });
     return t;
   }
+  function curvedPanel(w, h, bulge) {
+    const g = new THREE.PlaneGeometry(w, h, 14, 1), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const u = 2 * p.getX(i) / w; p.setZ(i, bulge * (1 - u * u)); }
+    g.computeVertexNormals(); return g;
+  }
   function bookMesh(b, dims) {
     const c = colorsOf(b), col = { ...c, lumDark: c.fg !== '#1d1a16' };
     const hv = hashStr(b.id), jacket = hv % 3 !== 0;
@@ -451,8 +521,8 @@ export async function createShelf3D(el, opts) {
     const board = new THREE.MeshStandardMaterial({ color: sideCol, roughness: jacket ? .55 : .8, bumpMap: clothTex, bumpScale: jacket ? .15 : .5 });
     const boardEdge = new THREE.MeshStandardMaterial({ color: sideCol.clone().multiplyScalar(.82), roughness: .85 });
     const spine = jacket
-      ? new THREE.MeshPhysicalMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(1, 1), roughness: .5, clearcoat: .35, clearcoatRoughness: .45 })
-      : new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(.9, .9), roughness: .86, bumpMap: clothTex, bumpScale: .35 });
+      ? new THREE.MeshPhysicalMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .55, 1), roughness: .5, clearcoat: .35, clearcoatRoughness: .45 })
+      : new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .5, .9), roughness: .86, bumpMap: clothTex, bumpScale: .35 });
     // the sides take the colour of the cover's edge once the real cover arrives
     if (b.coverUrl && !b.spineUrl) loadImage(b.coverUrl).then(img => {
       if (!img) return;
@@ -464,21 +534,29 @@ export async function createShelf3D(el, opts) {
     if (dims.hard) {
       // hardback: two boards, a spine, and a page block set in by the "squares"
       const BT = Math.min(.2, t * .09), SQ = .24, SP = .34;
-      const pw = t - 2 * BT - .02, ph = h - 2 * SQ, pd = d - SQ - SP * .6;
-      add(new THREE.BoxGeometry(pw, ph, pd), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, d / 2 - SP * .6 - pd / 2);
-      for (const sgn of [-1, 1]) add(new THREE.BoxGeometry(BT, h, d - SP * .55), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - BT / 2), 0, -SP * .55 / 2);
-      add(new THREE.BoxGeometry(t, h, SP), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - SP / 2);
+      // a rounded spine that bulges out past the boards, the way a cased book's does
+      const bulge = Math.min(.42, t * .11), spF = d / 2 - bulge;      // front plane of the spine block
+      const bdF = spF - SP * .5, bdD = bdF + d / 2;                   // boards tuck into the spine block
+      const pgF = spF - SP * .6, pd = pgF + d / 2 - SQ, pw = t - 2 * BT - .02, ph = h - 2 * SQ;
+      add(new THREE.BoxGeometry(pw, ph, pd), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, pgF - pd / 2);
+      for (const sgn of [-1, 1]) { const bm = add(new THREE.BoxGeometry(BT, h, bdD), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - BT / 2), 0, bdF - bdD / 2); if (sgn > 0) g.userData.front = bm; }
+      add(new THREE.BoxGeometry(t, h, SP), [boardEdge, boardEdge, boardEdge, boardEdge, boardEdge, boardEdge], 0, 0, d / 2 - SP / 2 - bulge);
+      add(curvedPanel(t, h, bulge), spine, 0, 0, d / 2 - bulge);
+      g.userData.front_z = d / 2;
     } else {
       // paperback: flush cut, thin card cover, page edges showing at head and tail
       const CT = .07;
       add(new THREE.BoxGeometry(t - 2 * CT, h - .02, d - CT), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, -CT / 2);
-      for (const sgn of [-1, 1]) add(new THREE.BoxGeometry(CT, h, d), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - CT / 2), 0, 0);
+      for (const sgn of [-1, 1]) { const bm = add(new THREE.BoxGeometry(CT, h, d), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - CT / 2), 0, 0); if (sgn > 0) g.userData.front = bm; }
+      g.userData.front_z = d / 2;
       add(new THREE.BoxGeometry(t, h, CT), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
     }
+    g.userData.book = b; g.userData.col = col; g.userData.boardMat = board;
     return g;
   }
   function buildBooks() {
-    booksGroup.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => m !== pagesMat && m.dispose()); });
+    const shared = new Set([pagesMat, edgeAOMat, floorAOMat, ironMat]);
+    booksGroup.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => !shared.has(m) && m.dispose()); });
     geoms.forEach(g => g.dispose()); geoms.length = 0; booksGroup.clear();
     rows = ROWS.map((st, j) => {
       const base = PL + BT + j * (HC + BT);
@@ -488,30 +566,64 @@ export async function createShelf3D(el, opts) {
       else list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       const g = new THREE.Group(); booksGroup.add(g);
       const left = -visW / 2 + 1.2 + .35; let x = left; const items = [];
-      list.forEach((b, i) => {
-        const dims = dimsOf(b), mesh = bookMesh(b, dims), pivot = new THREE.Group();
+      // a small pile lying flat at the end of fuller shelves
+      const nStack = st !== 'reading' && list.length >= 6 ? (list.length >= 10 ? 3 : 2) : 0;
+      const standing = list.slice(0, list.length - nStack), stacked = list.slice(list.length - nStack);
+      const sDims = standing.map(dimsOf);
+      standing.forEach((b, i) => {
+        const dims = sDims[i], mesh = bookMesh(b, dims), pivot = new THREE.Group();
         const hv = hashStr(b.id);
-        if (view === 'covers') {
-          // face-out, leaning back against the wall
-          const tilt = new THREE.Group(); mesh.rotation.y = -Math.PI / 2; mesh.position.set(0, dims.h / 2, 0);
-          tilt.add(mesh); tilt.rotation.x = -.11; pivot.add(tilt);
-          pivot.position.set(x + dims.d / 2, base, -DEPTH + dims.t / 2 + 2.6);
-          x += dims.d + .9;
-        } else {
-          mesh.position.set(dims.t / 2, dims.h / 2, 0);
-          pivot.add(mesh);
-          pivot.position.set(x, base, -1.6 - dims.d / 2 - (hv % 3) * .35);
-          pivot.rotation.y = ((hv % 5) - 2) * .012;
-          x += dims.t + .025 + (hv % 7 === 0 ? .12 : 0);
-        }
-        pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone() };
+        mesh.position.set(dims.t / 2, dims.h / 2, 0);
+        pivot.add(mesh);
+        pivot.position.set(x, base, -1.4 - dims.d / 2 - ((hv >>> 4) % 10) * .09);
+        pivot.rotation.y = ((hv % 5) - 2) * .01;
+        // contact shading where this book meets its neighbours
+        const zf = mesh.userData.front_z + .02, aw = Math.min(.55, dims.t * .3), aos = [];
+        [[-1, sDims[i - 1]], [1, sDims[i + 1]]].forEach(([sg, nb]) => {
+          const ah = nb ? Math.min(dims.h, nb.h) : dims.h * .35;
+          const q = new THREE.Mesh(new THREE.PlaneGeometry(aw, ah), edgeAOMat); geoms.push(q.geometry);
+          q.position.set(sg * (dims.t / 2 - aw / 2), -dims.h / 2 + ah / 2, zf); if (sg > 0) q.scale.x = -1;
+          q.renderOrder = 2; mesh.add(q); aos.push(q);
+        });
+        mesh.userData.aos = aos;
+        x += dims.t + .02 + (hv % 9 === 0 ? .1 : 0);
+        pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone(), d: dims.d };
         g.add(pivot); items.push(pivot);
       });
+      const standW = x - left;
+      // shadow pooled on the shelf in front of the books
+      if (standing.length) {
+        const fs = new THREE.Mesh(new THREE.PlaneGeometry(standW + .4, 2.8), floorAOMat); geoms.push(fs.geometry);
+        fs.rotation.x = -Math.PI / 2; fs.position.set(left + standW / 2, base + .02, -1.45 + 1.4 - .2);
+        fs.renderOrder = 1; g.add(fs);
+      }
+      const stackW = stacked.length ? Math.max(...stacked.map(b => dimsOf(b).h)) + .8 : 0;
+      // a cast-iron bookend when there is room, otherwise the last book leans
+      if (st !== 'reading' && standing.length && standW + stackW + 3 < visW - 4) {
+        const be = new THREE.Group();
+        const up = new THREE.Mesh(new THREE.BoxGeometry(.28, 13, 8), ironMat), ft = new THREE.Mesh(new THREE.BoxGeometry(3.6, .16, 8), ironMat);
+        geoms.push(up.geometry, ft.geometry); up.position.set(.14, 6.5, 0); ft.position.set(1.8, .08, 0);
+        [up, ft].forEach(m => { m.castShadow = m.receiveShadow = true; be.add(m); });
+        be.position.set(x + .02, base, -1.6 - 4.6); g.add(be); x += 3.9;
+      }
+      // the pile
+      if (stacked.length) {
+        x += .5; let yAcc = 0;
+        stacked.map(b => [b, dimsOf(b)]).sort((a, b2) => b2[1].h - a[1].h).forEach(([b, dims], k) => {
+          const mesh = bookMesh(b, dims), pivot = new THREE.Group(), hv = hashStr(b.id);
+          mesh.rotation.z = Math.PI / 2; mesh.position.set(dims.h / 2, dims.t / 2, 0); pivot.add(mesh);
+          pivot.position.set(x + ((hv % 7) - 3) * .12, base + yAcc, -1.4 - dims.d / 2 - (hv % 4) * .1);
+          pivot.rotation.y = ((hv % 5) - 2) * .02;
+          pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone(), flat: true, d: dims.d };
+          yAcc += dims.t + .01; g.add(pivot); items.push(pivot);
+        });
+        x += stackW;
+      }
       const contentW = x - left;
       // lean the last book if there is room
-      if (view !== 'covers' && items.length > 1 && contentW < visW - 12) {
-        const p = items[items.length - 1], m = p.children[0], dims = dimsOf(list[list.length - 1]);
-        const prev = items[items.length - 2]; const prevRight = prev.position.x + dimsOf(list[list.length - 2]).t;
+      if (st === 'reading' && standing.length > 1 && contentW < visW - 12) {
+        const p = items[standing.length - 1], m = p.children[0], dims = sDims[standing.length - 1];
+        const prev = items[standing.length - 2]; const prevRight = prev.position.x + sDims[standing.length - 2].t;
         const a = .2; m.position.x = -dims.t / 2;
         p.position.x = prevRight + dims.h * Math.sin(a) + dims.t * Math.cos(a) - .15; p.rotation.z = a;
         p.userData.home = p.position.clone(); p.userData.rot = p.rotation.clone();
@@ -533,7 +645,7 @@ export async function createShelf3D(el, opts) {
   let drag = null;
   const pxToWorld = () => visW / el.clientWidth;
   el.addEventListener('pointerdown', e => {
-    const row = rowAt(e); drag = { x: e.clientX, y: e.clientY, t: performance.now(), row, last: e.clientX, lt: performance.now(), moved: false };
+    const row = rowAt(e); drag = { x: e.clientX, y: e.clientY, t: e.timeStamp, row, last: e.clientX, lt: performance.now(), moved: false };
     if (row) row.vel = 0;
   });
   el.addEventListener('pointermove', e => {
@@ -547,7 +659,7 @@ export async function createShelf3D(el, opts) {
   });
   const end = e => {
     if (!drag) return; const d = drag; drag = null;
-    if (!d.moved && performance.now() - d.t < 450 && e.type === 'pointerup') pick(e);
+    if (!d.moved && e.timeStamp - d.t < 450 && e.type === 'pointerup') pick(e);
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
   el.addEventListener('wheel', e => { if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; const r = rowAt(e); if (!r) return; e.preventDefault(); setOffset(r, r.offset - e.deltaX * pxToWorld()) }, { passive: false });
@@ -557,29 +669,47 @@ export async function createShelf3D(el, opts) {
     r.offset = v; r.group.position.x = v; needs = true;
   }
   let pulled = null;
+  function showCover(m, on) {
+    const fb = m.userData.front; if (!fb) return;
+    if (on) {
+      if (!m.userData.coverMat) m.userData.coverMat = new THREE.MeshStandardMaterial({ map: coverTex(m.userData.book, m.userData.col), roughness: .55 });
+      fb.material = fb.material.slice(); fb.material[0] = m.userData.coverMat;
+    } else { fb.material = fb.material.slice(); fb.material[0] = m.userData.boardMat; }
+    (m.userData.aos || []).forEach(q => q.visible = !on);
+  }
   function pick(e) {
-    toNDC(e); ray.setFromCamera(ndc, camera);
+    scene.updateMatrixWorld(); toNDC(e); ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(booksGroup.children, true)[0]; if (!hit) return;
     let p = hit.object; while (p && !p.userData?.home) p = p.parent; if (!p) return;
     pushBack(); pulled = p;
-    tween(p.position, 'z', p.userData.home.z + (view === 'covers' ? 6 : 9), 260);
-    tween(p.position, 'y', p.userData.home.y + .6, 260);
-    setTimeout(() => onPick(p.userData.id), 230);
+    const m = p.children[0], d = p.userData.d || 14;
+    if (p.userData.flat) {
+      tween(p.position, 'z', p.userData.home.z + d * .5 + 3, 300);
+      setTimeout(() => onPick(p.userData.id), 380); return;
+    }
+    showCover(m, true);
+    tween(p.position, 'z', p.userData.home.z + d * .55 + 5, 260);
+    tween(p.position, 'y', p.userData.home.y + .8, 260);
+    tween(m.rotation, 'y', -1.22, 360, 200);
+    setTimeout(() => onPick(p.userData.id), 760);
   }
   function pushBack() {
-    if (!pulled) return; const p = pulled; pulled = null;
-    tween(p.position, 'z', p.userData.home.z, 380); tween(p.position, 'y', p.userData.home.y, 380);
+    if (!pulled) return; const p = pulled; pulled = null; const m = p.children[0];
+    tween(m.rotation, 'y', 0, 300);
+    tween(p.position, 'z', p.userData.home.z, 380, 220); tween(p.position, 'y', p.userData.home.y, 380, 220);
+    setTimeout(() => { if (pulled !== p) { showCover(m, false); needs = true; } }, 640);
   }
-  function tween(obj, prop, to, dur) {
+  function tween(obj, prop, to, dur, delay = 0) {
     for (let i = tweens.length - 1; i >= 0; i--) if (tweens[i].obj === obj && tweens[i].prop === prop) tweens.splice(i, 1);
-    tweens.push({ obj, prop, from: obj[prop], to, dur, start: performance.now() });
+    tweens.push({ obj, prop, from: null, to, dur, start: performance.now() + delay });
   }
 
   function loop() {
     if (disposed) return; raf = requestAnimationFrame(loop);
     const now = performance.now();
     for (let i = tweens.length - 1; i >= 0; i--) {
-      const t = tweens[i], k = Math.min(1, (now - t.start) / t.dur), e = 1 - Math.pow(1 - k, 3);
+      const t = tweens[i]; if (now < t.start) { needs = true; continue; } if (t.from === null) t.from = t.obj[t.prop];
+      const k = Math.min(1, (now - t.start) / t.dur), e = 1 - Math.pow(1 - k, 3);
       t.obj[t.prop] = t.from + (t.to - t.from) * e; needs = true; if (k >= 1) tweens.splice(i, 1);
     }
     if (!drag || !drag.moved) for (const r of rows) {
