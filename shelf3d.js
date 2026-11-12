@@ -10,7 +10,7 @@ const DEPTH = 26;    // shelf depth
 const H = PL + BT + 3 * (HC + BT);
 const FOV = 24;
 const ROWS = ['want', 'finished', 'reading'];          // bottom → top
-const LABEL = { reading: 'READING NOW', finished: 'FINISHED', want: 'WANT TO READ' };
+const LABEL = { reading: 'READING NOW', finished: 'FINISHED', want: 'NEXT READ' };
 
 /* ---------- procedural textures ---------- */
 function hash2(seed) {

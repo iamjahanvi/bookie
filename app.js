@@ -16,7 +16,7 @@ const textOn = bg => lum(bg) > .32 ? '#1d1a16' : '#f6f0e4';
 function colorsOf(b) { const h = hash(b.id); const bg = validHex(b.color) ? b.color : PALETTE[h % PALETTE.length]; const acc = validHex(b.accent) ? b.accent : (lum(bg) > .32 ? '#7a2b22' : '#e2c27a'); return { bg, acc, fg: textOn(bg) } }
 const surname = a => (a || '').split(/,|&| and /)[0].trim().split(/\s+/).pop() || '';
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-const STATUS = { want: 'Want to read', reading: 'Reading', finished: 'Finished' };
+const STATUS = { want: 'Next read', reading: 'Reading', finished: 'Finished' };
 const proxied = url => 'api/cover?u=' + encodeURIComponent(url);
 const olCover = (id, size = 'L') => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg`;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2800) }
@@ -126,7 +126,7 @@ function faceHTML(b) {
 }
 function shelfHTML(key, books) {
   const ghost = '<div class="spine ghost" style="width:34px;height:170px"></div><div class="spine ghost" style="width:44px;height:190px"></div><div class="spine ghost" style="width:30px;height:160px"></div>';
-  const msg = { reading: 'Nothing on the go. Pull something off the to-read shelf.', finished: 'Finished books gather here.', want: 'Books you’re eyeing go here.' }[key];
+  const msg = { reading: 'Nothing on the go. Pull something off the next-read shelf.', finished: 'Finished books gather here.', want: 'Books you’re eyeing go here.' }[key];
   const covers = S.view === 'covers';
   return `<section class="shelf"><div class="shelf-h"><h2>${key === 'reading' ? 'Reading now' : STATUS[key]}</h2><span class="n">${books.length ? String(books.length).padStart(2, '0') : ''}</span></div>
     <div class="case"><div class="rack ${covers ? 'covers' : ''}">${books.length ? books.map(b => covers ? faceHTML(b) : spineHTML(b)).join('') : ghost}</div><div class="plank"><i class="top"></i><i class="front"></i></div></div>

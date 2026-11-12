@@ -2,7 +2,7 @@
 
 A bookshelf for what you read and the lines you keep.
 
-- **Wooden shelves**: Reading now, Finished and Want to read, shown as spines or face-out covers. They run edge to edge and scroll sideways.
+- **Wooden shelves**: Reading now, Finished and Next read. They run edge to edge and scroll sideways.
 - **Real covers**: search Open Library, with Google Books as a fallback, then choose the exact edition you own or upload your own photo. The spine colour is taken from the cover.
 - **Lines**: type them in, or photograph the page. Claude copies out the text and picks the sentences you underlined.
 - **Share cards**: 1080×1350 quote cards in three styles that open your phone's share sheet.
