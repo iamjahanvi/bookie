@@ -168,7 +168,7 @@ async function init3d() {
   shelf3dState = 'loading';
   try {
     const gl = document.createElement('canvas').getContext('webgl2'); if (!gl) throw new Error('no webgl2');
-    const m = await import('./shelf3d.js');
+    const m = await import('./shelf3d.js?v=' + (document.querySelector('script[src^="app.js"]')?.src.split('v=')[1] || ''));
     shelf3d = await m.createShelf3D($('#bc'), { colorsOf, coverSrc: coverSources, onPick: id => openDetail(id) });
     shelf3dState = 'ready'; $('#bc').classList.add('ready');
   } catch (e) { console.warn('3D bookcase unavailable, using flat shelves', e); shelf3dState = 'failed' }
