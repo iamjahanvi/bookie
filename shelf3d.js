@@ -8,7 +8,7 @@ const HC = 30;       // clear height of a compartment
 const PL = 12;       // plinth (kickboard) height
 const DEPTH = 26;    // shelf depth
 const H = PL + BT + 3 * (HC + BT);
-const FOV = 36;
+const FOV = 24;
 const ROWS = ['want', 'finished', 'reading'];          // bottom → top
 const LABEL = { reading: 'READING NOW', finished: 'FINISHED', want: 'WANT TO READ' };
 
@@ -50,6 +50,44 @@ function woodCanvases(seed, light, dark, W = 1024, Hh = 256, rings = 9, warpAmt 
   col.getContext('2d').putImageData(ci, 0, 0); bump.getContext('2d').putImageData(bi, 0, 0);
   return { col, bump };
 }
+function mapleCanvases(seed, light, dark, W = 2048, Hh = 512, opts = {}) {
+  const { lines = 120, cathedral = .35, knots = 2, contrast = 1 } = opts;
+  const col = cnv(W, Hh), bump = cnv(W, Hh);
+  const ci = col.getContext('2d').createImageData(W, Hh), bi = bump.getContext('2d').createImageData(W, Hh);
+  const n1 = vnoise(seed), n2 = vnoise(seed + 13), n3 = vnoise(seed + 29), h = hash2(seed + 3);
+  const ks = Array.from({ length: knots }, (_, i) => ({ x: h(i, 1) * W, y: (.2 + h(i, 2) * .6) * Hh, r: 10 + h(i, 3) * 18 }));
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+    let yy = y + n1(x / 380, y / 60) * 26 + n2(x / 120, y / 30) * 6;
+    // knots bend the grain around them
+    let kd = 0;
+    for (const k of ks) { const dx = (x - k.x) / (k.r * 3.2), dy = (y - k.y) / k.r; const d = dx * dx + dy * dy; if (d < 9) { yy += (y - k.y) * 1.6 / (1 + d); kd = Math.max(kd, Math.exp(-d * 1.8)); } }
+    // cathedral arches from slow sine bands
+    const cath = Math.sin((yy / Hh) * Math.PI * 3 + Math.sin(x / W * Math.PI * 2 + seed) * 2.2) * cathedral;
+    const g = (yy / Hh) * lines + cath * 6;
+    const fr = g - Math.floor(g);
+    const late = Math.pow(1 - Math.abs(fr * 2 - 1), 6);           // thin dark late-wood lines
+    const fibre = n3(x / 22, y * 1.7) * .5 + n2(x / 5, y * 3.1) * .25; // fine fibres along the board
+    let v = .78 - late * .42 * contrast - (fibre - .37) * .28 * contrast - kd * .55 + (n1(x / 600, y / 200) - .5) * .18;
+    v = Math.min(1, Math.max(0, v));
+    const c = mix(dark, light, v); const i = (y * W + x) * 4;
+    ci.data[i] = c[0]; ci.data[i + 1] = c[1]; ci.data[i + 2] = c[2]; ci.data[i + 3] = 255;
+    const b = Math.round(255 * Math.min(1, .62 - late * .3 + fibre * .25 - kd * .2));
+    bi.data[i] = bi.data[i + 1] = bi.data[i + 2] = b; bi.data[i + 3] = 255;
+  }
+  col.getContext('2d').putImageData(ci, 0, 0); bump.getContext('2d').putImageData(bi, 0, 0);
+  return { col, bump };
+}
+// Curved-spine normal map: light rolls across a rounded spine.
+function spineNormalCanvas() {
+  const w = 128, c = cnv(w, 4), x = c.getContext('2d'), im = x.createImageData(w, 4);
+  for (let u = 0; u < w; u++) {
+    const t = u / (w - 1) * 2 - 1;                 // -1..1 across the spine
+    const th = Math.sign(t) * Math.pow(Math.abs(t), 1.6) * 1.05;   // flatter in the middle, rolls off at the joints
+    const nx = Math.sin(th), nz = Math.cos(th);
+    for (let v = 0; v < 4; v++) { const i = (v * w + u) * 4; im.data[i] = (nx * .5 + .5) * 255; im.data[i + 1] = 128; im.data[i + 2] = (nz * .5 + .5) * 255; im.data[i + 3] = 255; }
+  }
+  x.putImageData(im, 0, 0); return c;
+}
 function clothCanvas(seed = 3) {
   const S = 256, c = cnv(S, S), x = c.getContext('2d'), im = x.createImageData(S, S), n = vnoise(seed), h = hash2(seed + 5);
   for (let y = 0; y < S; y++) for (let X = 0; X < S; X++) {
@@ -61,7 +99,7 @@ function clothCanvas(seed = 3) {
 }
 function aoCanvas() {
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
-  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(0,0,0,.62)'); g.addColorStop(.22, 'rgba(0,0,0,.22)'); g.addColorStop(.55, 'rgba(0,0,0,0)'); g.addColorStop(.9, 'rgba(0,0,0,.06)'); g.addColorStop(1, 'rgba(0,0,0,.32)');
+  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(40,20,5,.55)'); g.addColorStop(.12, 'rgba(40,20,5,.2)'); g.addColorStop(.4, 'rgba(0,0,0,0)'); g.addColorStop(.92, 'rgba(0,0,0,.04)'); g.addColorStop(1, 'rgba(40,20,5,.22)');
   x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
 }
 function pagesCanvas() {
@@ -77,41 +115,102 @@ function rgbOf(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 25
 function shade(hex, k) { return '#' + rgbOf(hex).map(v => Math.max(0, Math.min(255, Math.round(v * k))).toString(16).padStart(2, '0')).join(''); }
 function hashStr(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 
-const PPU = 22; // texture pixels per world unit
-function spineCanvas(b, dims, col) {
-  const w = Math.max(40, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
-  const c = cnv(w, h), x = c.getContext('2d'), hv = hashStr(b.id);
-  const foil = col.lumDark ? (hv % 3 === 0 ? '#e9d8a6' : col.acc) : col.fg;
-  x.fillStyle = col.bg; x.fillRect(0, 0, w, h);
-  // cloth speckle
-  const hh = hash2(hv % 1000);
-  for (let i = 0; i < w * h / 6; i++) { const px = hh(i, 1) * w, py = hh(i, 2) * h, a = hh(i, 3); x.fillStyle = a > .5 ? `rgba(255,255,255,${(a - .5) * .07})` : `rgba(0,0,0,${a * .09})`; x.fillRect(px, py, 1.4, 1.4); }
-  // rounded-spine shading
-  const g = x.createLinearGradient(0, 0, w, 0);
-  g.addColorStop(0, 'rgba(0,0,0,.42)'); g.addColorStop(.12, 'rgba(0,0,0,.08)'); g.addColorStop(.32, 'rgba(255,255,255,.13)');
-  g.addColorStop(.55, 'rgba(255,255,255,.02)'); g.addColorStop(.88, 'rgba(0,0,0,.14)'); g.addColorStop(1, 'rgba(0,0,0,.45)');
-  x.fillStyle = g; x.fillRect(0, 0, w, h);
-  // decoration
-  const pat = hv % 4; x.fillStyle = foil; x.strokeStyle = foil;
-  if (pat === 0) { x.fillRect(0, h * .045, w, 5); x.fillRect(0, h * .045 + 9, w, 2); x.fillRect(0, h * .94, w, 5); x.fillRect(0, h * .94 - 7, w, 2); }
-  if (pat === 1) { x.lineWidth = 2; x.strokeRect(5, 12, w - 10, h - 24); }
-  if (pat === 2) { x.beginPath(); x.arc(w / 2, h * .07, Math.min(w * .16, 9), 0, 7); x.fill(); }
-  if (pat === 3) { x.fillStyle = shade(col.bg, .62); x.fillRect(0, h * .11, w, h * .2); x.fillStyle = foil; x.fillRect(0, h * .11, w, 2); x.fillRect(0, h * .31 - 2, w, 2); }
-  // title (top → bottom) and author
-  const titleTop = pat === 3 ? h * .34 : h * .12, authorZone = h * .18;
-  const avail = h - titleTop - authorZone - h * .04;
-  let fs = Math.min(w * .44, 46);
-  x.save(); x.translate(w / 2, titleTop); x.rotate(Math.PI / 2);
-  x.textBaseline = 'middle'; x.fillStyle = foil;
-  let t = b.title || 'Untitled';
-  x.font = `500 ${fs}px Fraunces, Georgia, serif`;
-  while (x.measureText(t).width > avail && fs > w * .3) { fs -= 1; x.font = `500 ${fs}px Fraunces, Georgia, serif`; }
-  while (x.measureText(t).width > avail && t.length > 3) t = t.slice(0, -2).trimEnd() + '…';
-  x.shadowColor = 'rgba(0,0,0,.35)'; x.shadowOffsetY = 1; x.shadowBlur = 1;
-  x.fillText(t, 0, 0);
-  const sur = (b.author || '').split(/,|&| and /)[0].trim().split(/\s+/).pop()?.toUpperCase() || '';
-  if (sur) { const afs = Math.min(w * .26, 20); x.font = `500 ${afs}px "IBM Plex Mono", monospace`; x.globalAlpha = .9; x.fillText(sur, h - titleTop - authorZone + h * .02, 0); }
+const PPU = 36; // texture pixels per world unit
+const FONTS = {
+  serif: w => `600 ${w}px Fraunces, Georgia, serif`,
+  serifIt: w => `italic 500 ${w}px "Playfair Display", Fraunces, Georgia, serif`,
+  display: w => `600 ${w}px "Playfair Display", Georgia, serif`,
+  cond: w => `600 ${w}px Oswald, "Arial Narrow", sans-serif`,
+  heavy: w => `400 ${w}px "Archivo Black", "Arial Black", sans-serif`,
+  mono: w => `500 ${w}px "IBM Plex Mono", monospace`,
+};
+function fitFont(x, text, fontFn, maxSize, minSize, avail) {
+  let fs = maxSize; x.font = fontFn(fs);
+  while (x.measureText(text).width > avail && fs > minSize) { fs -= 1; x.font = fontFn(fs); }
+  let t = text; while (x.measureText(t).width > avail && t.length > 3) t = t.slice(0, -2).trimEnd() + '…';
+  return { fs, t };
+}
+function surnameOf(a) { return (a || '').split(/,|&| and /)[0].trim().split(/\s+/).pop() || ''; }
+function logo(x, cx, cy, r, kind, ink) {
+  x.save(); x.fillStyle = ink; x.strokeStyle = ink; x.lineWidth = Math.max(1.5, r * .18);
+  if (kind === 0) { x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); }
+  else if (kind === 1) { x.fillRect(cx - r, cy - r, r * 2, r * 2); }
+  else if (kind === 2) { x.beginPath(); x.moveTo(cx, cy - r); x.lineTo(cx + r, cy + r * .8); x.lineTo(cx - r, cy + r * .8); x.closePath(); x.fill(); }
+  else if (kind === 3) { x.strokeRect(cx - r, cy - r, r * 2, r * 2); x.font = `700 ${r * 1.3}px Georgia, serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('P', cx, cy + r * .05); }
+  else { x.beginPath(); x.arc(cx, cy, r, 0, 7); x.stroke(); x.beginPath(); x.arc(cx, cy, r * .45, 0, 7); x.fill(); }
   x.restore();
+}
+// Draws type for a spine. style picks one of several layouts real publishers use.
+function typeSpine(x, w, h, b, style, ink, acc) {
+  const title = b.title || 'Untitled', author = b.author || '', sur = surnameOf(author);
+  const hv = hashStr(b.id), wide = w >= 3.1 * PPU;
+  x.fillStyle = ink; x.textBaseline = 'middle';
+  const vertical = (text, fontFn, maxFs, top, len, caps) => {
+    const t = caps ? text.toUpperCase() : text;
+    x.save(); x.translate(w / 2, top); x.rotate(Math.PI / 2); x.textAlign = 'left';
+    const f = fitFont(x, t, fontFn, maxFs, Math.max(9, w * .28), len); x.fillText(f.t, 0, 0); x.restore();
+    return f.fs;
+  };
+  const horizStack = (text, fontFn, maxFs, top, maxLines) => {
+    const words = text.split(/\s+/); x.textAlign = 'center'; let fs = maxFs, lines;
+    for (; fs > 10; fs--) {
+      x.font = fontFn(fs); lines = []; let line = '';
+      for (const wd of words) { const t = line ? line + ' ' + wd : wd; if (x.measureText(t).width > w * .82 && line) { lines.push(line); line = wd; } else line = t; }
+      if (line) lines.push(line);
+      if (lines.length <= maxLines && lines.every(l => x.measureText(l).width <= w * .86)) break;
+    }
+    lines.slice(0, maxLines).forEach((l, i) => x.fillText(l, w / 2, top + i * fs * 1.12));
+    return top + lines.length * fs * 1.12;
+  };
+  const kind = hv % 5, logoR = Math.min(w * .17, 12);
+  if (style === 'stack' && wide) {
+    const end = horizStack(title, FONTS.display, Math.min(w * .2, 30), h * .07, 5);
+    x.fillStyle = acc; x.fillRect(w * .3, end + 6, w * .4, 2); x.fillStyle = ink;
+    x.textAlign = 'center'; x.font = FONTS.mono(Math.min(w * .1, 15)); x.fillText(sur.toUpperCase(), w / 2, h * .86);
+    logo(x, w / 2, h * .95, logoR, kind, ink);
+  } else if (style === 'cond') {
+    vertical(title, FONTS.cond, w * .62, h * .05, h * .66, true);
+    x.save(); x.globalAlpha = .85; vertical(author, FONTS.cond, w * .34, h * .74, h * .17, true); x.restore();
+    logo(x, w / 2, h * .955, logoR, kind, ink);
+  } else if (style === 'block') {
+    x.fillStyle = acc; x.fillRect(0, 0, w, h * .2); x.fillStyle = ink;
+    x.save(); x.fillStyle = textOnHex(acc); x.textAlign = 'center';
+    if (wide) { x.font = FONTS.mono(Math.min(w * .11, 14)); x.fillText(sur.toUpperCase(), w / 2, h * .1); }
+    else { vertical(sur, FONTS.mono, w * .3, h * .025, h * .15, true); }
+    x.restore();
+    vertical(title, FONTS.heavy, w * .5, h * .24, h * .62, false);
+    logo(x, w / 2, h * .95, logoR, kind, ink);
+  } else if (style === 'quiet') {
+    const fs = vertical(title, FONTS.serifIt, w * .36, h * .3, h * .4, false);
+    x.save(); x.globalAlpha = .7; vertical(author, FONTS.serif, Math.min(fs * .7, w * .26), h * .76, h * .14, false); x.restore();
+    logo(x, w / 2, h * .955, logoR * .8, kind, ink);
+  } else if (style === 'heavy') {
+    vertical(title, FONTS.heavy, w * .56, h * .06, h * .64, true);
+    x.fillStyle = acc; x.fillRect(w * .2, h * .73, w * .6, 2); x.fillStyle = ink;
+    vertical(sur, FONTS.serif, w * .32, h * .76, h * .14, false);
+    logo(x, w / 2, h * .955, logoR, kind, ink);
+  } else { // classic: serif title, gilt bands
+    x.fillStyle = acc; x.fillRect(0, h * .04, w, 4); x.fillRect(0, h * .04 + 8, w, 1.5); x.fillRect(0, h * .955, w, 4); x.fillRect(0, h * .955 - 6, w, 1.5);
+    x.fillStyle = ink;
+    vertical(title, FONTS.serif, w * .44, h * .1, h * .62, false);
+    x.save(); x.globalAlpha = .85; vertical(sur, FONTS.mono, w * .25, h * .76, h * .15, true); x.restore();
+  }
+}
+function textOnHex(hex) { const [r, g, b] = rgbOf(hex); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > .55 ? '#1d1a16' : '#f6efe2'; }
+const STYLES = ['classic', 'cond', 'block', 'quiet', 'heavy', 'stack'];
+function styleOf(b, w) { const hv = hashStr(b.id + 's'); let s = STYLES[hv % STYLES.length]; if (s === 'stack' && w < 3.1 * PPU) s = 'cond'; return s; }
+function speckle(x, w, h, seed, amt = 1) {
+  const hh = hash2(seed % 1000);
+  for (let i = 0; i < w * h / 7; i++) { const a = hh(i, 3); x.fillStyle = a > .5 ? `rgba(255,255,255,${(a - .5) * .06 * amt})` : `rgba(0,0,0,${a * .07 * amt})`; x.fillRect(hh(i, 1) * w, hh(i, 2) * h, 1.3, 1.3); }
+}
+function spineCanvas(b, dims, col) {
+  const w = Math.max(48, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
+  const c = cnv(w, h), x = c.getContext('2d'), hv = hashStr(b.id);
+  x.fillStyle = col.bg; x.fillRect(0, 0, w, h);
+  speckle(x, w, h, hv);
+  const ink = col.lumDark ? (hv % 3 === 0 ? '#ead9a8' : col.fg) : col.fg;
+  const acc = col.lumDark ? (hv % 2 ? '#d9b866' : col.acc) : col.acc;
+  typeSpine(x, w, h, b, styleOf(b, w), ink, acc);
   return c;
 }
 function coverCanvas(b, col) {
@@ -147,31 +246,33 @@ export async function createShelf3D(el, opts) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.18;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   el.appendChild(renderer.domElement);
 
-  const scene = new THREE.Scene(); scene.background = new THREE.Color('#2a1d13');
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#b98a5c');
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.3;
+  scene.environmentIntensity = 0.45;
   const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 2000);
 
-  scene.add(new THREE.HemisphereLight(0xfff1dc, 0x3b2817, 0.35));
-  const key = new THREE.DirectionalLight(0xffdcb0, 3.1); key.castShadow = true;
+  scene.add(new THREE.HemisphereLight(0xfff4e4, 0x6b4a2c, 0.7));
+  const key = new THREE.DirectionalLight(0xffe6c8, 2.4); key.castShadow = true;
   key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 16;
   scene.add(key, key.target);
-  const fill = new THREE.DirectionalLight(0xfff6ea, 0.45); fill.position.set(0, H * .45, 200); scene.add(fill);
+  const fill = new THREE.DirectionalLight(0xfff6ea, 0.8); fill.position.set(0, H * .45, 200); scene.add(fill);
+  const rake = new THREE.DirectionalLight(0xfff0dc, 0.7); rake.position.set(160, H * .6, 70); scene.add(rake);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; } return t; };
-  const oak = woodCanvases(4, [178, 126, 78], [112, 70, 38], 1024, 256, 11, 1);
-  const walnut = woodCanvases(9, [96, 64, 40], [52, 32, 18], 1024, 512, 30, .7);
+  const oak = mapleCanvases(4, [236, 202, 156], [176, 128, 80], 2048, 256, { lines: 70, cathedral: .25, knots: 1, contrast: 1.35 });
+  const walnut = mapleCanvases(9, [226, 186, 136], [168, 118, 70], 2048, 1024, { lines: 150, cathedral: .45, knots: 3, contrast: 1.3 });
   const boardMap = tex(oak.col, true, 1), boardBump = tex(oak.bump, false, 1);
   const backMap = tex(walnut.col, true, 1), backBump = tex(walnut.bump, false, 1);
   const clothTex = tex(clothCanvas(), false, 1); clothTex.repeat.set(3, 3);
   const pagesTex = tex(pagesCanvas());
   const pagesMat = new THREE.MeshStandardMaterial({ map: pagesTex, roughness: .92, metalness: 0 });
+  const spineNormal = new THREE.CanvasTexture(spineNormalCanvas()); spineNormal.colorSpace = THREE.NoColorSpace; spineNormal.wrapT = THREE.RepeatWrapping;
 
   const caseGroup = new THREE.Group(), booksGroup = new THREE.Group(); scene.add(caseGroup, booksGroup);
   let visW = 50, rows = [], books = [], view = 'spines', needs = true, raf = 0, disposed = false, paused = false;
@@ -187,8 +288,8 @@ export async function createShelf3D(el, opts) {
     return true;
   }
   function boardMat(lenU, depthU) {
-    const m = new THREE.MeshStandardMaterial({ map: boardMap.clone(), bumpMap: boardBump.clone(), bumpScale: .35, roughness: .55, metalness: 0 });
-    m.map.repeat.set(lenU / 60, depthU / 30); m.bumpMap.repeat.copy(m.map.repeat); m.map.needsUpdate = m.bumpMap.needsUpdate = true;
+    const m = new THREE.MeshStandardMaterial({ map: boardMap.clone(), bumpMap: boardBump.clone(), bumpScale: .6, roughness: .5, metalness: 0 });
+    m.map.repeat.set(lenU / 110, depthU / 40); m.bumpMap.repeat.copy(m.map.repeat); m.map.needsUpdate = m.bumpMap.needsUpdate = true;
     return m;
   }
   function buildCase() {
@@ -198,7 +299,7 @@ export async function createShelf3D(el, opts) {
     const W = visW * backScale + 8, BH = H * backScale + 20;
     // back panel
     const bm = new THREE.MeshStandardMaterial({ map: backMap, bumpMap: backBump, bumpScale: .25, roughness: .72 });
-    bm.map.repeat.set(W / 90, 1); bm.bumpMap.repeat.copy(bm.map.repeat);
+    bm.map.repeat.set(W / 150, 1); bm.bumpMap.repeat.copy(bm.map.repeat);
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
     const aoTex = tex(aoCanvas(), false);
@@ -218,10 +319,17 @@ export async function createShelf3D(el, opts) {
       const lip = new THREE.Mesh(new THREE.CylinderGeometry(thick / 2, thick / 2, bw, 16, 1, true), boardMat(bw, 4));
       lip.rotation.z = Math.PI / 2; lip.scale.set(1, 1, .35); lip.position.set(0, m.position.y, 1); lip.receiveShadow = true; caseGroup.add(lip);
     });
+    // side frame, like a real case
+    const POST = 1.2;
+    [-1, 1].forEach(sgn => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(POST, H + 10, DEPTH + 2), boardMat(H, DEPTH));
+      post.material.color.set('#c99a6a'); post.material.map.rotation = Math.PI / 2; post.material.bumpMap.rotation = Math.PI / 2;
+      post.position.set(sgn * (visW / 2 - POST / 2), H / 2, -DEPTH / 2 + .9); post.castShadow = post.receiveShadow = true; caseGroup.add(post);
+    });
     // plinth
-    const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); pm.material.color.set('#7a5a3e');
+    const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); pm.material.color.set('#c79a6a');
     pm.position.set(0, PL / 2, -1.2); pm.receiveShadow = true; caseGroup.add(pm);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#2a1d13', roughness: 1 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#7a5636', roughness: 1 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 20); caseGroup.add(floor);
     // brass label plates
     ROWS.forEach((st, j) => {
@@ -229,7 +337,7 @@ export async function createShelf3D(el, opts) {
       const n = books.filter(b => (b.status || 'reading') === st).length;
       const plate = new THREE.Mesh(new THREE.PlaneGeometry(12.5, 2.3),
         new THREE.MeshStandardMaterial({ map: tex(brassCanvas(`${LABEL[st]} · ${String(n).padStart(2, '0')}`)), metalness: .85, roughness: .32 }));
-      plate.position.set(-visW / 2 + 1.4 + 6.25, y, 1.9); caseGroup.add(plate);
+      plate.position.set(-visW / 2 + 1.5 + 1 + 6.25, y, 1.9); caseGroup.add(plate);
     });
     // light
     key.position.set(-visW * .22 - 6, H + 55, 150); key.target.position.set(0, H / 2, -DEPTH / 2);
@@ -237,10 +345,14 @@ export async function createShelf3D(el, opts) {
   }
 
   function dimsOf(b) {
-    const h = hashStr(b.id);
-    const ht = Math.min(HC - 3.2, 17.5 + (h % 9) * .85 + (b.pages > 500 ? 1.2 : 0));
-    const t = Math.max(1.1, Math.min(6.2, .45 + (b.pages || (180 + h % 260)) * .0062));
-    return { h: ht, t, d: ht * .68 };
+    const h = hashStr(b.id), r = n => ((h >>> n) & 1023) / 1023;
+    // format: mass-market paperback, trade paperback, hardback, tall art/large-format
+    const f = r(3); const base = f < .2 ? 17.4 : f < .62 ? 20.3 : f < .9 ? 23.4 : 26.2;
+    const ht = Math.min(HC - 2.6, base + (r(7) - .5) * 1.6);
+    const pages = b.pages || (140 + Math.round(r(11) * 420));
+    const paper = f < .2 ? .0058 : .0068;                     // thicker stock on hardbacks
+    const t = Math.max(.95, Math.min(6.4, .35 + pages * paper + (f >= .62 ? .5 : 0)));
+    return { h: ht, t, d: ht * (f < .2 ? .62 : .67) };
   }
   // ---- real images: covers from Open Library etc., spines from the cover or a photo ----
   const imgCache = new Map();
@@ -267,15 +379,14 @@ export async function createShelf3D(el, opts) {
   }
   function spineShading(x, w, h) {
     const g = x.createLinearGradient(0, 0, w, 0);
-    g.addColorStop(0, 'rgba(0,0,0,.42)'); g.addColorStop(.12, 'rgba(0,0,0,.06)'); g.addColorStop(.32, 'rgba(255,255,255,.12)');
-    g.addColorStop(.55, 'rgba(255,255,255,.02)'); g.addColorStop(.88, 'rgba(0,0,0,.14)'); g.addColorStop(1, 'rgba(0,0,0,.45)');
+    g.addColorStop(0, 'rgba(0,0,0,.28)'); g.addColorStop(.06, 'rgba(0,0,0,.04)'); g.addColorStop(.94, 'rgba(0,0,0,.06)'); g.addColorStop(1, 'rgba(0,0,0,.3)');
     x.fillStyle = g; x.fillRect(0, 0, w, h);
     // a touch of shelf wear at head and tail
     const e = x.createLinearGradient(0, 0, 0, h); e.addColorStop(0, 'rgba(0,0,0,.18)'); e.addColorStop(.02, 'rgba(0,0,0,0)'); e.addColorStop(.98, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,.22)');
     x.fillStyle = e; x.fillRect(0, 0, w, h);
   }
   function spineFromPhoto(dims, img) {
-    const w = Math.max(40, Math.round(dims.t * PPU * 1.6)), h = Math.round(dims.h * PPU * 1.6);
+    const w = Math.max(48, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
     const c = cnv(w, h), x = c.getContext('2d');
     // the photo may be landscape or portrait — rotate so the long side runs down the spine
     const land = img.naturalWidth > img.naturalHeight;
@@ -287,29 +398,17 @@ export async function createShelf3D(el, opts) {
     x.restore(); spineShading(x, w, h); return c;
   }
   function spineFromCover(b, dims, col, img) {
-    const w = Math.max(40, Math.round(dims.t * PPU * 1.6)), h = Math.round(dims.h * PPU * 1.6);
+    const w = Math.max(48, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
     const c = cnv(w, h), x = c.getContext('2d');
     const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.max(2, Math.round(iw * .085));
-    // the printed art wraps from the front cover round to the spine
-    x.drawImage(img, 0, 0, sw, ih, 0, 0, w, h);
+    x.drawImage(img, 0, 0, sw, ih, 0, 0, w, h);             // the printed art wraps round to the spine
     const [r, g, bb] = avgColor(img, 0, sw);
-    // calm the art down so type sits on it, as a designed spine would
-    x.fillStyle = `rgba(${r | 0},${g | 0},${bb | 0},.55)`; x.fillRect(0, 0, w, h);
+    x.fillStyle = `rgba(${r | 0},${g | 0},${bb | 0},.6)`; x.fillRect(0, 0, w, h);
     const light = (0.2126 * r + 0.7152 * g + 0.0722 * bb) / 255 > .55;
     const ink = light ? '#1d1a16' : '#f6efe2';
-    // title band, top to bottom, set in the cover's own colour
-    const titleTop = h * .1, authorZone = h * .2, avail = h - titleTop - authorZone - h * .04;
-    let fs = Math.min(w * .44, 52);
-    x.save(); x.translate(w / 2, titleTop); x.rotate(Math.PI / 2); x.textBaseline = 'middle'; x.fillStyle = ink;
-    let t = b.title || 'Untitled'; x.font = `600 ${fs}px Fraunces, Georgia, serif`;
-    while (x.measureText(t).width > avail && fs > w * .3) { fs -= 1; x.font = `600 ${fs}px Fraunces, Georgia, serif`; }
-    while (x.measureText(t).width > avail && t.length > 3) t = t.slice(0, -2).trimEnd() + '…';
-    x.shadowColor = light ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.45)'; x.shadowBlur = 2; x.fillText(t, 0, 0);
-    const sur = (b.author || '').split(/,|&| and /)[0].trim().split(/\s+/).pop()?.toUpperCase() || '';
-    if (sur) { x.font = `500 ${Math.min(w * .26, 22)}px "IBM Plex Mono", monospace`; x.fillText(sur, h - titleTop - authorZone + h * .02, 0); }
-    x.restore();
-    // a tiny publisher's mark at the foot
-    x.fillStyle = ink; x.globalAlpha = .7; x.beginPath(); x.arc(w / 2, h * .955, Math.min(w * .1, 7), 0, 7); x.fill(); x.globalAlpha = 1;
+    const [ar, ag, ab] = avgColor(img, Math.round(iw * .3), Math.round(iw * .4));
+    const acc = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
+    typeSpine(x, w, h, b, styleOf(b, w), ink, acc);
     spineShading(x, w, h); return c;
   }
   function spineTex(b, dims, col) {
@@ -333,8 +432,11 @@ export async function createShelf3D(el, opts) {
   }
   function bookMesh(b, dims) {
     const c = colorsOf(b), col = { ...c, lumDark: c.fg !== '#1d1a16' };
+    const hv = hashStr(b.id), jacket = hv % 3 !== 0;   // two in three books wear a glossy paper jacket
     const board = new THREE.MeshStandardMaterial({ color: shade(col.bg, .95), roughness: .78, bumpMap: clothTex, bumpScale: .5 });
-    const spine = new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), roughness: .58, bumpMap: clothTex, bumpScale: .25 });
+    const spine = jacket
+      ? new THREE.MeshPhysicalMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(1, 1), roughness: .5, clearcoat: .35, clearcoatRoughness: .45 })
+      : new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(.9, .9), roughness: .86, bumpMap: clothTex, bumpScale: .35 });
     const front = new THREE.MeshStandardMaterial({ map: coverTex(b, col), roughness: .62 });
     // order: +x (front cover), -x (back cover), +y top pages, -y bottom, +z spine, -z fore-edge
     const geo = new THREE.BoxGeometry(dims.t, dims.h, dims.d); geoms.push(geo);
@@ -352,7 +454,7 @@ export async function createShelf3D(el, opts) {
       else if (st === 'reading') list.sort((a, b) => (b.started || '').localeCompare(a.started || ''));
       else list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       const g = new THREE.Group(); booksGroup.add(g);
-      const left = -visW / 2 + 1.2; let x = left; const items = [];
+      const left = -visW / 2 + 1.2 + .35; let x = left; const items = [];
       list.forEach((b, i) => {
         const dims = dimsOf(b), mesh = bookMesh(b, dims), pivot = new THREE.Group();
         const hv = hashStr(b.id);
@@ -367,14 +469,14 @@ export async function createShelf3D(el, opts) {
           pivot.add(mesh);
           pivot.position.set(x, base, -1.6 - dims.d / 2 - (hv % 3) * .35);
           pivot.rotation.y = ((hv % 5) - 2) * .012;
-          x += dims.t + .06 + (hv % 4 === 0 ? .25 : 0);
+          x += dims.t + .025 + (hv % 7 === 0 ? .12 : 0);
         }
         pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone() };
         g.add(pivot); items.push(pivot);
       });
       const contentW = x - left;
       // lean the last book if there is room
-      if (view !== 'covers' && items.length > 1 && contentW < visW - 10) {
+      if (view !== 'covers' && items.length > 1 && contentW < visW - 12) {
         const p = items[items.length - 1], m = p.children[0], dims = dimsOf(list[list.length - 1]);
         const prev = items[items.length - 2]; const prevRight = prev.position.x + dimsOf(list[list.length - 2]).t;
         const a = .2; m.position.x = -dims.t / 2;
@@ -382,7 +484,7 @@ export async function createShelf3D(el, opts) {
         p.userData.home = p.position.clone(); p.userData.rot = p.rotation.clone();
       }
       const row = { st, group: g, items, base, contentW, offset: 0, vel: 0 };
-      row.min = Math.min(0, visW - 2.4 - contentW); return row;
+      row.min = Math.min(0, visW - 3.7 - contentW); return row;
     });
     needs = true;
   }
