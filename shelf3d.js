@@ -196,6 +196,13 @@ function typeSpine(x, w, h, b, style, ink, acc) {
     x.save(); x.globalAlpha = .85; vertical(sur, FONTS.mono, w * .25, h * .76, h * .15, true); x.restore();
   }
 }
+function hinges(x, w, h) {
+  // the joint where spine meets each board: a fine groove with a lit lip
+  for (const gx of [w * .045, w * .955]) {
+    x.fillStyle = 'rgba(0,0,0,.38)'; x.fillRect(gx - 1, 0, 2, h);
+    x.fillStyle = 'rgba(255,255,255,.12)'; x.fillRect(gx + (gx < w / 2 ? 1 : -2), 0, 1, h);
+  }
+}
 function textOnHex(hex) { const [r, g, b] = rgbOf(hex); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > .55 ? '#1d1a16' : '#f6efe2'; }
 const STYLES = ['classic', 'cond', 'block', 'quiet', 'heavy', 'stack'];
 function styleOf(b, w) { const hv = hashStr(b.id + 's'); let s = STYLES[hv % STYLES.length]; if (s === 'stack' && w < 3.1 * PPU) s = 'cond'; return s; }
@@ -211,6 +218,7 @@ function spineCanvas(b, dims, col) {
   const ink = col.lumDark ? (hv % 3 === 0 ? '#ead9a8' : col.fg) : col.fg;
   const acc = col.lumDark ? (hv % 2 ? '#d9b866' : col.acc) : col.acc;
   typeSpine(x, w, h, b, styleOf(b, w), ink, acc);
+  if (dims.hard) hinges(x, w, h);
   return c;
 }
 function coverCanvas(b, col) {
@@ -352,7 +360,7 @@ export async function createShelf3D(el, opts) {
     const pages = b.pages || (140 + Math.round(r(11) * 420));
     const paper = f < .2 ? .0058 : .0068;                     // thicker stock on hardbacks
     const t = Math.max(1.6, Math.min(7.2, (.35 + pages * paper + (f >= .62 ? .5 : 0)) * 1.3));
-    return { h: ht, t, d: ht * (f < .2 ? .62 : .67) };
+    return { h: ht, t, d: ht * (f < .2 ? .62 : .67), hard: f >= .62 };
   }
   // ---- real images: covers from Open Library etc., spines from the cover or a photo ----
   const imgCache = new Map();
@@ -394,20 +402,27 @@ export async function createShelf3D(el, opts) {
     if (land) { x.translate(w, 0); x.rotate(Math.PI / 2); }
     const W = land ? h : w, Hh = land ? w : h;
     x.drawImage(img, 0, 0, W, Hh);   // show the whole spine, stretched to this book's shape
-    x.restore(); spineShading(x, w, h); return c;
+    x.restore(); if (dims.hard) hinges(x, w, h); spineShading(x, w, h); return c;
   }
+  function coverColours(img) {
+    const iw = img.naturalWidth;
+    const edge = avgColor(img, 0, Math.max(2, Math.round(iw * .12)));            // what wraps round to the spine
+    const mid = avgColor(img, Math.round(iw * .3), Math.round(iw * .4));
+    return { edge, mid };
+  }
+  const rgbStr = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
   function spineFromCover(b, dims, col, img) {
     const w = Math.max(48, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
     const c = cnv(w, h), x = c.getContext('2d');
-    const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.max(2, Math.round(iw * .085));
-    x.drawImage(img, 0, 0, sw, ih, 0, 0, w, h);             // the printed art wraps round to the spine
-    const [r, g, bb] = avgColor(img, 0, sw);
-    x.fillStyle = `rgba(${r | 0},${g | 0},${bb | 0},.6)`; x.fillRect(0, 0, w, h);
-    const light = (0.2126 * r + 0.7152 * g + 0.0722 * bb) / 255 > .55;
+    const { edge, mid } = coverColours(img);
+    x.fillStyle = rgbStr(edge); x.fillRect(0, 0, w, h);
+    speckle(x, w, h, hashStr(b.id), .8);
+    const light = (0.2126 * edge[0] + 0.7152 * edge[1] + 0.0722 * edge[2]) / 255 > .55;
     const ink = light ? '#1d1a16' : '#f6efe2';
-    const [ar, ag, ab] = avgColor(img, Math.round(iw * .3), Math.round(iw * .4));
-    const acc = `rgb(${ar | 0},${ag | 0},${ab | 0})`;
+    const dist = Math.hypot(edge[0] - mid[0], edge[1] - mid[1], edge[2] - mid[2]);
+    const acc = dist > 60 ? rgbStr(mid) : (light ? '#7a2b22' : '#e2c27a');
     typeSpine(x, w, h, b, styleOf(b, w), ink, acc);
+    if (dims.hard) hinges(x, w, h);
     spineShading(x, w, h); return c;
   }
   function spineTex(b, dims, col) {
@@ -431,17 +446,36 @@ export async function createShelf3D(el, opts) {
   }
   function bookMesh(b, dims) {
     const c = colorsOf(b), col = { ...c, lumDark: c.fg !== '#1d1a16' };
-    const hv = hashStr(b.id), jacket = hv % 3 !== 0;   // two in three books wear a glossy paper jacket
-    const board = new THREE.MeshStandardMaterial({ color: shade(col.bg, .95), roughness: .78, bumpMap: clothTex, bumpScale: .5 });
+    const hv = hashStr(b.id), jacket = hv % 3 !== 0;
+    const sideCol = new THREE.Color(shade(col.bg, .92));
+    const board = new THREE.MeshStandardMaterial({ color: sideCol, roughness: jacket ? .55 : .8, bumpMap: clothTex, bumpScale: jacket ? .15 : .5 });
+    const boardEdge = new THREE.MeshStandardMaterial({ color: sideCol.clone().multiplyScalar(.82), roughness: .85 });
     const spine = jacket
       ? new THREE.MeshPhysicalMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(1, 1), roughness: .5, clearcoat: .35, clearcoatRoughness: .45 })
       : new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(.9, .9), roughness: .86, bumpMap: clothTex, bumpScale: .35 });
-    const front = new THREE.MeshStandardMaterial({ map: coverTex(b, col), roughness: .62 });
-    // order: +x (front cover), -x (back cover), +y top pages, -y bottom, +z spine, -z fore-edge
-    const geo = new THREE.BoxGeometry(dims.t, dims.h, dims.d); geoms.push(geo);
-    const m = new THREE.Mesh(geo, [front, board, pagesMat, pagesMat, spine, pagesMat]);
-    m.castShadow = m.receiveShadow = true; m.userData.id = b.id;
-    return m;
+    // the sides take the colour of the cover's edge once the real cover arrives
+    if (b.coverUrl && !b.spineUrl) loadImage(b.coverUrl).then(img => {
+      if (!img) return;
+      try { const e = coverColours(img).edge; const k = new THREE.Color(rgbStr(e)); k.convertSRGBToLinear(); board.color.copy(k).multiplyScalar(.92); boardEdge.color.copy(k).multiplyScalar(.75); needs = true; } catch { }
+    });
+    const g = new THREE.Group(); g.userData.id = b.id;
+    const add = (geo, mats, x, y, z) => { geoms.push(geo); const m = new THREE.Mesh(geo, mats); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; m.userData.id = b.id; g.add(m); return m; };
+    const { t, h, d } = dims;
+    if (dims.hard) {
+      // hardback: two boards, a spine, and a page block set in by the "squares"
+      const BT = Math.min(.2, t * .09), SQ = .24, SP = .34;
+      const pw = t - 2 * BT - .02, ph = h - 2 * SQ, pd = d - SQ - SP * .6;
+      add(new THREE.BoxGeometry(pw, ph, pd), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, d / 2 - SP * .6 - pd / 2);
+      for (const sgn of [-1, 1]) add(new THREE.BoxGeometry(BT, h, d - SP * .55), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - BT / 2), 0, -SP * .55 / 2);
+      add(new THREE.BoxGeometry(t, h, SP), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - SP / 2);
+    } else {
+      // paperback: flush cut, thin card cover, page edges showing at head and tail
+      const CT = .07;
+      add(new THREE.BoxGeometry(t - 2 * CT, h - .02, d - CT), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, -CT / 2);
+      for (const sgn of [-1, 1]) add(new THREE.BoxGeometry(CT, h, d), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - CT / 2), 0, 0);
+      add(new THREE.BoxGeometry(t, h, CT), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
+    }
+    return g;
   }
   function buildBooks() {
     booksGroup.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => m !== pagesMat && m.dispose()); });
