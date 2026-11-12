@@ -242,28 +242,100 @@ export async function createShelf3D(el, opts) {
     const t = Math.max(1.1, Math.min(6.2, .45 + (b.pages || (180 + h % 260)) * .0062));
     return { h: ht, t, d: ht * .68 };
   }
+  // ---- real images: covers from Open Library etc., spines from the cover or a photo ----
+  const imgCache = new Map();
+  function loadImage(url) {
+    if (!url) return Promise.resolve(null);
+    if (imgCache.has(url)) return imgCache.get(url);
+    const urls = coverSrc(url);
+    const p = new Promise(res => {
+      const tryOne = i => {
+        if (i >= urls.length) return res(null);
+        const im = new Image(); im.crossOrigin = 'anonymous'; im.decoding = 'async';
+        im.onload = () => (im.naturalWidth > 20 ? res(im) : tryOne(i + 1)); im.onerror = () => tryOne(i + 1); im.src = urls[i];
+      };
+      tryOne(0);
+    });
+    imgCache.set(url, p); return p;
+  }
+  function avgColor(img, sx, sw) {
+    const c = cnv(1, 8), x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, sx, 0, sw, img.naturalHeight, 0, 0, 1, 8);
+    const d = x.getImageData(0, 0, 1, 8).data; let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    return [r / 8, g / 8, b / 8];
+  }
+  function spineShading(x, w, h) {
+    const g = x.createLinearGradient(0, 0, w, 0);
+    g.addColorStop(0, 'rgba(0,0,0,.42)'); g.addColorStop(.12, 'rgba(0,0,0,.06)'); g.addColorStop(.32, 'rgba(255,255,255,.12)');
+    g.addColorStop(.55, 'rgba(255,255,255,.02)'); g.addColorStop(.88, 'rgba(0,0,0,.14)'); g.addColorStop(1, 'rgba(0,0,0,.45)');
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    // a touch of shelf wear at head and tail
+    const e = x.createLinearGradient(0, 0, 0, h); e.addColorStop(0, 'rgba(0,0,0,.18)'); e.addColorStop(.02, 'rgba(0,0,0,0)'); e.addColorStop(.98, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,.22)');
+    x.fillStyle = e; x.fillRect(0, 0, w, h);
+  }
+  function spineFromPhoto(dims, img) {
+    const w = Math.max(40, Math.round(dims.t * PPU * 1.6)), h = Math.round(dims.h * PPU * 1.6);
+    const c = cnv(w, h), x = c.getContext('2d');
+    // the photo may be landscape or portrait — rotate so the long side runs down the spine
+    const land = img.naturalWidth > img.naturalHeight;
+    x.save();
+    if (land) { x.translate(w, 0); x.rotate(Math.PI / 2); }
+    const W = land ? h : w, Hh = land ? w : h;
+    const s = Math.max(W / img.naturalWidth, Hh / img.naturalHeight);
+    x.drawImage(img, (W - img.naturalWidth * s) / 2, (Hh - img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
+    x.restore(); spineShading(x, w, h); return c;
+  }
+  function spineFromCover(b, dims, col, img) {
+    const w = Math.max(40, Math.round(dims.t * PPU * 1.6)), h = Math.round(dims.h * PPU * 1.6);
+    const c = cnv(w, h), x = c.getContext('2d');
+    const iw = img.naturalWidth, ih = img.naturalHeight, sw = Math.max(2, Math.round(iw * .085));
+    // the printed art wraps from the front cover round to the spine
+    x.drawImage(img, 0, 0, sw, ih, 0, 0, w, h);
+    const [r, g, bb] = avgColor(img, 0, sw);
+    // calm the art down so type sits on it, as a designed spine would
+    x.fillStyle = `rgba(${r | 0},${g | 0},${bb | 0},.55)`; x.fillRect(0, 0, w, h);
+    const light = (0.2126 * r + 0.7152 * g + 0.0722 * bb) / 255 > .55;
+    const ink = light ? '#1d1a16' : '#f6efe2';
+    // title band, top to bottom, set in the cover's own colour
+    const titleTop = h * .1, authorZone = h * .2, avail = h - titleTop - authorZone - h * .04;
+    let fs = Math.min(w * .44, 52);
+    x.save(); x.translate(w / 2, titleTop); x.rotate(Math.PI / 2); x.textBaseline = 'middle'; x.fillStyle = ink;
+    let t = b.title || 'Untitled'; x.font = `600 ${fs}px Fraunces, Georgia, serif`;
+    while (x.measureText(t).width > avail && fs > w * .3) { fs -= 1; x.font = `600 ${fs}px Fraunces, Georgia, serif`; }
+    while (x.measureText(t).width > avail && t.length > 3) t = t.slice(0, -2).trimEnd() + '…';
+    x.shadowColor = light ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.45)'; x.shadowBlur = 2; x.fillText(t, 0, 0);
+    const sur = (b.author || '').split(/,|&| and /)[0].trim().split(/\s+/).pop()?.toUpperCase() || '';
+    if (sur) { x.font = `500 ${Math.min(w * .26, 22)}px "IBM Plex Mono", monospace`; x.fillText(sur, h - titleTop - authorZone + h * .02, 0); }
+    x.restore();
+    // a tiny publisher's mark at the foot
+    x.fillStyle = ink; x.globalAlpha = .7; x.beginPath(); x.arc(w / 2, h * .955, Math.min(w * .1, 7), 0, 7); x.fill(); x.globalAlpha = 1;
+    spineShading(x, w, h); return c;
+  }
   function spineTex(b, dims, col) {
-    const k = [b.id, b.title, b.author, col.bg, col.acc, dims.t.toFixed(2), dims.h.toFixed(2)].join('|');
-    if (!texCache.has(k)) texCache.set(k, tex(spineCanvas(b, dims, col)));
-    return texCache.get(k);
+    const k = [b.id, b.title, b.author, col.bg, col.acc, b.coverUrl || '', b.spineUrl || '', dims.t.toFixed(2), dims.h.toFixed(2)].join('|');
+    if (texCache.has(k)) return texCache.get(k);
+    const t = tex(spineCanvas(b, dims, col)); texCache.set(k, t);
+    (async () => {
+      const sp = await loadImage(b.spineUrl);
+      if (sp) { t.image = spineFromPhoto(dims, sp); t.dispose(); t.needsUpdate = true; needs = true; return; }
+      const cv = await loadImage(b.coverUrl);
+      if (cv) { try { t.image = spineFromCover(b, dims, col, cv); t.dispose(); t.needsUpdate = true; needs = true; } catch { /* image not readable */ } }
+    })();
+    return t;
   }
   function coverTex(b, col) {
     const k = b.id + '|' + (b.coverUrl || '') + '|' + col.bg;
     if (coverCache.has(k)) return coverCache.get(k);
     const t = tex(coverCanvas(b, col)); coverCache.set(k, t);
-    if (b.coverUrl) {
-      const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous');
-      const urls = coverSrc(b.coverUrl);
-      const tryLoad = i => i < urls.length && loader.load(urls[i], img => { t.image = img.image; t.needsUpdate = true; needs = true; }, undefined, () => tryLoad(i + 1));
-      tryLoad(0);
-    }
+    loadImage(b.coverUrl).then(img => { if (img) { t.image = img; t.dispose(); t.needsUpdate = true; needs = true; } });
     return t;
   }
   function bookMesh(b, dims) {
     const c = colorsOf(b), col = { ...c, lumDark: c.fg !== '#1d1a16' };
     const board = new THREE.MeshStandardMaterial({ color: shade(col.bg, .95), roughness: .78, bumpMap: clothTex, bumpScale: .5 });
-    const spine = new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), roughness: .62, bumpMap: clothTex, bumpScale: .35 });
-    const front = view === 'covers' ? new THREE.MeshStandardMaterial({ map: coverTex(b, col), roughness: .5 }) : board;
+    const spine = new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), roughness: .58, bumpMap: clothTex, bumpScale: .25 });
+    const front = new THREE.MeshStandardMaterial({ map: coverTex(b, col), roughness: .62 });
     // order: +x (front cover), -x (back cover), +y top pages, -y bottom, +z spine, -z fore-edge
     const geo = new THREE.BoxGeometry(dims.t, dims.h, dims.d); geoms.push(geo);
     const m = new THREE.Mesh(geo, [front, board, pagesMat, pagesMat, spine, pagesMat]);

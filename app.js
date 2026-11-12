@@ -313,13 +313,15 @@ const firstSentence = s => { const t = String(s || '').replace(/<[^>]+>/g, ''); 
 function bookSheet(existing) {
   openSheet((body, close) => {
     const b = existing ? clone(existing) : { id: 'b-' + rid(), title: '', author: '', year: null, pages: null, genre: '', blurb: '', status: 'reading', finished: null, quotes: [], createdAt: Date.now() };
-    let ctl = null, results = [], chosen = null, pal = [], ownCover = null;
+    let ctl = null, results = [], chosen = null, pal = [], ownCover = null, spineBlob = null, spinePrev = null;
     close.onclose = () => ctl?.abort();
     body.innerHTML = `<h2>${existing ? 'Edit book' : 'Add a book'}</h2>
       <label class="fld"><span>Find it</span><div class="row"><input class="inp" id="f-q" autocomplete="off" enterkeyhint="search" placeholder="Title, author or ISBN" value="${esc(existing ? '' : '')}"><button class="btn ghost" id="f-go" type="button">${ICON.search} Search</button></div></label>
       <p class="hint" id="f-hint">${existing ? 'Search to swap the cover or fix the details.' : 'Covers come from Open Library.'}</p>
       <div class="results" id="f-res" hidden></div>
       <div class="fld" id="f-covers-wrap"><span class="lab">Cover</span><div class="pick-row"><div id="f-prev"></div></div><div class="editions" id="f-eds"></div></div>
+      <div class="fld"><span class="lab">Spine (optional)</span><div class="row" style="align-items:center"><label class="btn ghost filebtn">${ICON.cam} <span id="f-sp-l">${b.spineUrl ? 'Retake spine photo' : 'Photograph the spine'}</span><input type="file" accept="image/*" id="f-spine"></label><button type="button" class="linkbtn" id="f-sp-x" ${b.spineUrl ? '' : 'hidden'}>Remove</button></div>
+        <p class="hint">Stand your copy up and shoot just the spine. Without one, the spine is made from the real cover.</p></div>
       <label class="fld"><span>Title</span><input class="inp" id="f-title" value="${esc(b.title)}"></label>
       <label class="fld"><span>Author</span><input class="inp" id="f-author" value="${esc(b.author)}"></label>
       <div class="grid3"><label class="fld"><span>Year</span><input class="inp" id="f-year" inputmode="numeric" value="${esc(b.year ?? '')}"></label>
@@ -334,6 +336,7 @@ function bookSheet(existing) {
     const drawPrev = () => {
       read(); const tmp = clone(b);
       $('#f-prev', body).innerHTML = `<div style="display:flex;gap:12px;align-items:flex-end">${coverHTML(tmp, 'cover mini-cover')}${spineHTML(tmp, 'mini-spine', 'div')}</div>`;
+      const sp = spinePrev || b.spineUrl; if (sp) { const ms = $('.mini-spine', body); ms.innerHTML = ''; ms.style.background = `center/cover no-repeat url("${sp.replace(/"/g, '%22')}")`; }
       const cur = colorsOf(b).bg; const list = [...new Set([...pal, ...PALETTE])];
       const sw = $('#f-sw', body);
       sw.innerHTML = list.map(c => `<button type="button" class="sw ${c.toLowerCase() === cur.toLowerCase() ? 'on' : ''} ${pal.includes(c) ? 'sug' : ''}" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('');
@@ -382,6 +385,12 @@ function bookSheet(existing) {
       } catch (e) { if (e.name !== 'AbortError') hint.textContent = 'Search isn’t reachable right now — fill it in by hand.' }
     };
     $('#f-go', body).onclick = runSearch;
+    $('#f-spine', body).onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      spineBlob = await compress(f, 1400, .86); spinePrev = URL.createObjectURL(spineBlob);
+      $('#f-sp-l', body).textContent = 'Retake spine photo'; $('#f-sp-x', body).hidden = false; drawPrev();
+    };
+    $('#f-sp-x', body).onclick = () => { spineBlob = null; spinePrev = null; delete b.spineUrl; $('#f-sp-x', body).hidden = true; $('#f-sp-l', body).textContent = 'Photograph the spine'; drawPrev() };
     $('#f-q', body).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runSearch() } });
     ['f-title', 'f-author'].forEach(i => $('#' + i, body).addEventListener('input', () => { clearTimeout(drawPrev._t); drawPrev._t = setTimeout(drawPrev, 250) }));
     $$('#f-st button', body).forEach(x => x.onclick = () => { b.status = x.dataset.st; $$('#f-st button', body).forEach(y => y.classList.toggle('on', y === x)) });
@@ -390,6 +399,7 @@ function bookSheet(existing) {
       read(); if (!b.title) { toast('A book needs a title — search, or type one.'); $('#f-title', body).focus(); return }
       const btn = $('#f-save', body); btn.disabled = true;
       if (ownCover) { btn.innerHTML = '<span class="spin"></span> Uploading'; try { b.coverUrl = await uploadImage(ownCover) } catch { toast('Cover photo didn’t upload — saved without it.'); delete b.coverUrl } }
+      if (spineBlob) { btn.innerHTML = '<span class="spin"></span> Uploading'; try { b.spineUrl = await uploadImage(spineBlob) } catch { toast('Spine photo didn’t upload — saved without it.') } }
       if (b.coverUrl && b.coverUrl.startsWith('blob:')) delete b.coverUrl;
       if (b.status === 'finished' && !b.finished) b.finished = today();
       if (!b.accent) delete b.accent;
