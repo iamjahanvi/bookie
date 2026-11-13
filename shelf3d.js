@@ -2,13 +2,15 @@
    Three shelves fill one screen. Each shelf swipes sideways; tap a book to pull it out. */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 
 const BT = 2.0;      // board thickness
 const HC = 25;       // clear height of a compartment
-const PL = 9;        // plinth (kickboard) height
+const PL = 11;       // plinth (kickboard) height — the carved buttons live here
 const DEPTH = 26;    // shelf depth
 const H = PL + BT + 3 * (HC + BT);
 const FOV = 24;
+const CAM_Y = .86;   // eye height, as a fraction of the bookcase
 const ROWS = ['want', 'finished', 'reading'];          // bottom → top
 const LABEL = { reading: 'READING NOW', finished: 'FINISHED', want: 'NEXT READ' };
 
@@ -49,6 +51,43 @@ function woodCanvases(seed, light, dark, W = 1024, Hh = 256, rings = 9, warpAmt 
   }
   col.getContext('2d').putImageData(ci, 0, 0); bump.getContext('2d').putImageData(bi, 0, 0);
   return { col, bump };
+}
+function fbm(n, x, y, oct = 4) { let a = 0, amp = .5, f = 1; for (let i = 0; i < oct; i++) { a += n(x * f, y * f) * amp; f *= 2.03; amp *= .5; } return a; }
+// Walnut veneer: long continuous grain, fine pores, colour streaks along the board, the odd figure.
+function walnutCanvases(seed, W = 2048, Hh = 512, opts = {}) {
+  const { lines = 90, tone = 0 } = opts;
+  const col = cnv(W, Hh), bump = cnv(W, Hh), rgh = cnv(W, Hh);
+  const ci = col.getContext('2d').createImageData(W, Hh), bi = bump.getContext('2d').createImageData(W, Hh), ri = rgh.getContext('2d').createImageData(W, Hh);
+  const n1 = vnoise(seed), n2 = vnoise(seed + 17), n3 = vnoise(seed + 31), n4 = vnoise(seed + 47), hp = hash2(seed + 5);
+  // palette: dark heartwood, mid brown, warm highlights, grey-violet cast typical of walnut
+  const dark = [44 + tone, 27 + tone, 16 + tone], mid = [92 + tone, 60 + tone, 38 + tone], warm = [128 + tone, 86 + tone, 52 + tone], cool = [70, 54, 46];
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+    const u = x / W, v = y / Hh;
+    // grain coordinate: mostly straight, slowly drifting, with a gentle cathedral figure
+    const drift = fbm(n1, u * 2.2, v * 3.5, 4) * (opts.drift ?? 2.4);
+    const cath = Math.sin(v * Math.PI * 2.2 + Math.sin(u * Math.PI * 1.3 + seed) * 1.4) * (opts.figure ?? .6);
+    const g = v * lines + drift * 5 + cath * 3;
+    const f = g - Math.floor(g);
+    const late = Math.pow(Math.max(0, 1 - Math.abs(f - .5) * 2), 7);          // dark late-wood line
+    const early = Math.pow(Math.max(0, 1 - Math.abs(f - .15) * 3.2), 3) * .35;  // soft lighter band
+    const streak = fbm(n2, u * 1.4, v * 9, 3);                                  // long colour streaks
+    const broad = fbm(n3, u * .7, v * 1.6, 2);                                  // board-scale tone
+    // pores: short dark dashes stretched along the grain
+    const pore = hp(Math.floor(x / 7), Math.floor(y * 1.0)) > .985 ? .55 : 0;
+    const fib = (n4(u * 380, v * 60) - .5) * .12;
+    let t = .52 + (streak - .5) * .55 + (broad - .5) * .35 + early - late * .55 - pore + fib;
+    t = Math.min(1, Math.max(0, t));
+    let c = t < .5 ? mix(dark, mid, t * 2) : mix(mid, warm, (t - .5) * 2);
+    c = mix(c, cool, Math.max(0, (.5 - streak)) * .35);                         // greyish cast in places
+    const i = (y * W + x) * 4;
+    ci.data[i] = c[0]; ci.data[i + 1] = c[1]; ci.data[i + 2] = c[2]; ci.data[i + 3] = 255;
+    const b = Math.round(255 * Math.min(1, Math.max(0, .62 - late * .25 - pore * .5 + fib)));
+    bi.data[i] = bi.data[i + 1] = bi.data[i + 2] = b; bi.data[i + 3] = 255;
+    const r = Math.round(255 * Math.min(1, .66 + late * .15 + pore * .3 + (streak - .5) * .14));   // pores and lines are duller
+    ri.data[i] = ri.data[i + 1] = ri.data[i + 2] = r; ri.data[i + 3] = 255;
+  }
+  col.getContext('2d').putImageData(ci, 0, 0); bump.getContext('2d').putImageData(bi, 0, 0); rgh.getContext('2d').putImageData(ri, 0, 0);
+  return { col, bump, rgh };
 }
 function mapleCanvases(seed, light, dark, W = 2048, Hh = 512, opts = {}) {
   const { lines = 120, cathedral = .35, knots = 2, contrast = 1 } = opts;
@@ -100,6 +139,8 @@ function clothCanvas(seed = 3) {
 function aoCanvas() {
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
   let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(40,20,5,.55)'); g.addColorStop(.12, 'rgba(40,20,5,.2)'); g.addColorStop(.4, 'rgba(0,0,0,0)'); g.addColorStop(.92, 'rgba(0,0,0,.04)'); g.addColorStop(1, 'rgba(40,20,5,.22)');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(30,15,5,.45)'); g.addColorStop(.07, 'rgba(30,15,5,.12)'); g.addColorStop(.18, 'rgba(0,0,0,0)'); g.addColorStop(.82, 'rgba(0,0,0,0)'); g.addColorStop(.93, 'rgba(30,15,5,.12)'); g.addColorStop(1, 'rgba(30,15,5,.45)');
   x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
 }
 function pagesCanvas() {
@@ -296,15 +337,122 @@ function brassMaps(text) {
   return { color: C, normal: N, rough: R };
 }
 
+// Carved icon in wood: transparent everywhere but the grooves, with a bevel normal map.
+function blurGray(d, w, h, r) {
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h), n = 2 * r + 1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let a = 0; for (let k = -r; k <= r; k++) a += d[y * w + Math.min(w - 1, Math.max(0, x + k))]; tmp[y * w + x] = a / n; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let a = 0; for (let k = -r; k <= r; k++) a += tmp[Math.min(h - 1, Math.max(0, y + k)) * w + x]; out[y * w + x] = a / n; }
+  return out;
+}
+function carveMaps(kind, caption) {
+  const word = kind === 'word';
+  const w = word ? 1024 : 256, h = word ? 240 : 256, c = cnv(w, h), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.strokeStyle = '#000'; x.fillStyle = '#000'; x.lineCap = 'round'; x.lineJoin = 'round';
+  if (word) {
+    x.font = '800 142px Fraunces, "Playfair Display", Georgia, serif'; if ('letterSpacing' in x) x.letterSpacing = '2px'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(caption, w / 2, h / 2 + 6);
+  } else if (kind === 'lamp') {
+    x.lineWidth = 11;
+    x.beginPath(); x.arc(128, 112, 54, Math.PI * .72, Math.PI * .28); x.lineTo(150, 176); x.lineTo(106, 176); x.closePath(); x.stroke();
+    x.lineWidth = 9; x.beginPath(); x.moveTo(108, 196); x.lineTo(148, 196); x.moveTo(114, 214); x.lineTo(142, 214); x.stroke();
+    x.lineWidth = 8; for (const a of [-2.6, -2.05, -1.57, -1.09, -.54]) { x.beginPath(); x.moveTo(128 + Math.cos(a) * 74, 112 + Math.sin(a) * 74); x.lineTo(128 + Math.cos(a) * 96, 112 + Math.sin(a) * 96); x.stroke(); }
+  } else if (kind === 'add') {
+    x.lineWidth = 11; x.beginPath(); x.arc(128, 124, 92, 0, 7); x.stroke();
+    x.lineWidth = 13; x.beginPath(); x.moveTo(128, 78); x.lineTo(128, 170); x.moveTo(82, 124); x.lineTo(174, 124); x.stroke();
+  } else {
+    x.lineWidth = 11;
+    x.beginPath(); x.moveTo(128, 88); x.quadraticCurveTo(88, 62, 34, 74); x.lineTo(34, 182); x.quadraticCurveTo(88, 170, 128, 196); x.closePath(); x.stroke();
+    x.beginPath(); x.moveTo(128, 88); x.quadraticCurveTo(168, 62, 222, 74); x.lineTo(222, 182); x.quadraticCurveTo(168, 170, 128, 196); x.stroke();
+    x.lineWidth = 6; for (const [a, b2] of [[60, 108], [60, 132], [60, 156]]) { x.beginPath(); x.moveTo(a, b2 - 6); x.lineTo(a + 44, b2 + 2); x.stroke(); x.beginPath(); x.moveTo(256 - a, b2 - 6); x.lineTo(256 - a - 44, b2 + 2); x.stroke(); }
+  }
+  const raw = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = raw[i * 4] / 255;            // 1 = wood surface, 0 = bottom of the groove
+  const hgt = blurGray(g, w, h, 3);
+  const col = cnv(w, h), cx = col.getContext('2d'), ci = cx.createImageData(w, h);
+  const nrm = cnv(w, h), nx = nrm.getContext('2d'), ni = nx.createImageData(w, h);
+  const at = (X, Y) => hgt[Math.min(h - 1, Math.max(0, Y)) * w + Math.min(w - 1, Math.max(0, X))];
+  for (let Y = 0; Y < h; Y++) for (let X = 0; X < w; X++) {
+    const i = Y * w + X, depth = 1 - hgt[i];
+    const dx = (at(X + 1, Y) - at(X - 1, Y)) * 4, dy = (at(X, Y + 1) - at(X, Y - 1)) * 4, l = Math.hypot(dx, dy, 1);
+    ni.data[i * 4] = (-dx / l * .5 + .5) * 255; ni.data[i * 4 + 1] = (dy / l * .5 + .5) * 255; ni.data[i * 4 + 2] = (1 / l * .5 + .5) * 255; ni.data[i * 4 + 3] = 255;
+    // groove: dark, burnished wood; alpha follows depth so the edge blends into the grain
+    ci.data[i * 4] = 14; ci.data[i * 4 + 1] = 7; ci.data[i * 4 + 2] = 3; ci.data[i * 4 + 3] = depth < .04 ? 0 : Math.min(255, Math.round(Math.pow(depth, .7) * 400));
+  }
+  cx.putImageData(ci, 0, 0); nx.putImageData(ni, 0, 0);
+  return { color: col, normal: nrm, aspect: h / w };
+}
+
+/* ---------- wood: a solid 3D shader, evaluated per pixel ---------- */
+const WOOD_GLSL = /* glsl */`
+uniform float uAxis; uniform vec3 uSeed; uniform float uPlank; uniform float uTone;
+varying vec3 vWoodP;
+float wh13(vec3 p){ p = fract(p * .1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+float wn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(mix(wh13(i), wh13(i + vec3(1,0,0)), f.x), mix(wh13(i + vec3(0,1,0)), wh13(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(wh13(i + vec3(0,0,1)), wh13(i + vec3(1,0,1)), f.x), mix(wh13(i + vec3(0,1,1)), wh13(i + vec3(1,1,1)), f.x), f.y), f.z); }
+float wfbm(vec3 p){ float a = 0., w = .5; for (int i = 0; i < 4; i++) { a += wn(p) * w; p = p * 2.03 + 7.1; w *= .5; } return a; }
+// The board is cut from a virtual log: growth rings wrap an axis that runs along the grain.
+void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
+  vec3 p = uAxis < .5 ? P.xyz : P.yxz;                 // p.x runs along the grain
+  float seam = 1.;
+  if (uPlank > 0.) {                                    // boards joined edge to edge, each from a different part of the tree
+    float k = p.y / uPlank, id = floor(k), fk = fract(k);
+    seam = smoothstep(0., .014, fk) * smoothstep(1., .986, fk);
+    p += vec3(wh13(vec3(id, 1., 2.)) * 90., 0., wh13(vec3(id, 5., 3.)) * 30. + id * 2.7);
+  }
+  p += uSeed;
+  vec3 q = p;
+  q.yz += (wfbm(vec3(p.x * .022, p.yz * .16)) - .5) * 2.0;         // the trunk is never straight
+  q.yz += (wn(vec3(p.x * .1, p.yz * .9)) - .5) * .12;
+  float r = length(q.yz - vec2(2., -34.)) * 2.7;                   // distance from the pith
+  float ring = fract(r), rid = floor(r);
+  float yr = wh13(vec3(rid, 7., 3.));                              // every year grew differently
+  float late = smoothstep(.45, .96, ring) * (1. - smoothstep(.96, 1., ring));   // darkens through the season, then starts again
+  float fibre = wn(vec3(p.x * .45, p.yz * 6.5));
+  float fine = wn(vec3(p.x * 1.3, p.yz * 9.));
+  float pore = smoothstep(.80, .90, wn(vec3(p.x * .9, p.yz * 11.))) * (1. - .6 * late);   // open pores, drawn out along the grain
+  float streak = wfbm(vec3(p.x * .01, p.yz * .3));               // long heartwood streaks
+  vec3 cE = vec3(.150, .074, .034), cL = vec3(.050, .023, .011), cW = vec3(.215, .110, .050), cG = vec3(.080, .048, .030);
+  col = mix(cE, cL, late * (.4 + .35 * yr));
+  col *= .9 + yr * .2;
+  col = mix(col, cG, smoothstep(.5, .8, streak) * .4);
+  col = mix(col, cW, smoothstep(.5, .2, streak) * .35);
+  col *= .92 + fibre * .16;
+  col *= 1. - fine * .1;
+  col = mix(col, cL * .6, pore * .5);
+  col *= mix(.18, 1., seam) * uTone;
+  hgt = -late * .22 - pore * .8 + fibre * .1 - (1. - seam) * 2.5;
+  rgh = .7 + late * .08 + pore * .2 - (fibre - .5) * .1 + (streak - .5) * .1;
+}
+`;
+function woodMaterial(axis, seed, plank = 0, tone = 1) {
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .7, metalness: 0, envMapIntensity: .22, specularIntensity: .3 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
+    sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
+    sh.vertexShader = 'varying vec3 vWoodP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWoodP = position;');
+    sh.fragmentShader = WOOD_GLSL + sh.fragmentShader
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol;')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(wR, .25, 1.);')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  { vec3 wdx = dFdx(-vViewPosition), wdy = dFdy(-vViewPosition); float hx = dFdx(wH), hy = dFdy(wH);
+    vec3 r1 = cross(wdy, normal), r2 = cross(normal, wdx); float det = dot(wdx, r1);
+    normal = normalize(abs(det) * normal - .07 * sign(det) * (hx * r1 + hy * r2)); }`);
+  };
+  m.customProgramCacheKey = () => 'bookie-wood';
+  return m;
+}
+
 /* ---------- the bookcase ---------- */
 export async function createShelf3D(el, opts) {
-  const { colorsOf, onPick, coverSrc } = opts;
-  try { await Promise.all(['500 40px Fraunces', '500 20px "IBM Plex Mono"'].map(f => document.fonts.load(f))); } catch { }
+  const { colorsOf, onPick, coverSrc, onDismiss } = opts;
+  let lamps = !!opts.lamps, envLoaded = false; const lampObjs = [], lampPucks = []; let anchors = opts.anchors || {}; const anchorBoxes = [];
+  try { await Promise.all(['500 40px Fraunces', '800 100px Fraunces', '500 20px "IBM Plex Mono"'].map(f => document.fonts.load(f))); } catch { }
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.28;
+  renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   el.appendChild(renderer.domElement);
 
@@ -312,21 +460,24 @@ export async function createShelf3D(el, opts) {
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.45;
+  // real light captured in an apartment (CC0, Poly Haven via pmndrs/assets)
+  const envReady = new Promise(res => new EXRLoader().load(new URL('./assets/apartment.exr', import.meta.url).href, t => {
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = pmrem.fromEquirectangular(t).texture; t.dispose();
+    scene.environmentRotation.set(0, Math.PI * .85, 0); envLoaded = true; applyLamps();
+    needs = true; res(true);
+  }, undefined, () => res(false)));
   const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 2000);
 
-  scene.add(new THREE.HemisphereLight(0xfff4e4, 0x6b4a2c, 0.7));
-  const key = new THREE.DirectionalLight(0xffe6c8, 2.4); key.castShadow = true;
+  const hemi = new THREE.HemisphereLight(0xfff4e4, 0x6b4a2c, 0.12); scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xffd9ae, 3.0); key.castShadow = true;
   key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 16;
   scene.add(key, key.target);
-  const fill = new THREE.DirectionalLight(0xfff6ea, 0.8); fill.position.set(0, H * .45, 200); scene.add(fill);
-  const rake = new THREE.DirectionalLight(0xfff0dc, 0.7); rake.position.set(160, H * .6, 70); scene.add(rake);
+  const fill = new THREE.DirectionalLight(0xfff6ea, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
+  const rake = new THREE.DirectionalLight(0xfff0dc, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; } return t; };
-  const oak = mapleCanvases(4, [104, 64, 36], [38, 21, 9], 2048, 256, { lines: 70, cathedral: .25, knots: 1, contrast: 1.35 });
-  const walnut = mapleCanvases(9, [92, 56, 31], [34, 18, 8], 2048, 1024, { lines: 150, cathedral: .45, knots: 3, contrast: 1.3 });
-  const boardMap = tex(oak.col, true, 1), boardBump = tex(oak.bump, false, 1);
-  const backMap = tex(walnut.col, true, 1), backBump = tex(walnut.bump, false, 1);
   const clothTex = tex(clothCanvas(), false, 1); clothTex.repeat.set(3, 3);
   const pagesTex = tex(pagesCanvas());
   const pagesMat = new THREE.MeshStandardMaterial({ map: pagesTex, roughness: .92, metalness: 0 });
@@ -349,31 +500,84 @@ export async function createShelf3D(el, opts) {
 
   function frame() {
     const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return false;
-    renderer.setSize(w, h, false); camera.aspect = w / h;
-    const d = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-    camera.position.set(0, H / 2, d); camera.lookAt(0, H / 2, 0); camera.updateProjectionMatrix();
-    visW = H * camera.aspect;
+    renderer.setSize(w, h, false);
+    const d = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)), yc = H * CAM_Y, fullH = h * (2 * yc / H);
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(yc / d));
+    camera.setViewOffset(w, fullH, 0, fullH - h, w, h);
+    camera.position.set(0, yc, d); camera.lookAt(0, yc, 0); camera.updateProjectionMatrix();
+    visW = H * (w / h);
     return true;
   }
-  function boardMat(lenU, depthU) {
-    const m = new THREE.MeshPhysicalMaterial({ map: boardMap.clone(), bumpMap: boardBump.clone(), bumpScale: .6, roughness: .55, metalness: 0, clearcoat: .35, clearcoatRoughness: .4 });
-    m.map.repeat.set(lenU / 110, depthU / 40); m.bumpMap.repeat.copy(m.map.repeat); m.map.needsUpdate = m.bumpMap.needsUpdate = true;
-    return m;
+  function placeAnchors() {
+    const r = el.getBoundingClientRect(), v = new THREE.Vector3();
+    for (const a of anchorBoxes) {
+      const node = anchors[a.kind]; if (!node) continue;
+      const pts = [[a.x - a.w / 2, a.y + a.h / 2], [a.x + a.w / 2, a.y - a.h / 2]].map(([px, py]) => { v.set(px, py, .32).project(camera); return [(v.x * .5 + .5) * r.width + r.left, (-v.y * .5 + .5) * r.height + r.top]; });
+      const pad = 8;
+      Object.assign(node.style, { left: pts[0][0] - pad + 'px', top: pts[0][1] - pad + 'px', width: pts[1][0] - pts[0][0] + pad * 2 + 'px', height: pts[1][1] - pts[0][1] + pad * 2 + 'px' });
+    }
   }
+  function pressAnchor(kind, on) {
+    const a = anchorBoxes.find(b => b.kind === kind); if (!a) return;
+    a.mesh.material.color.setScalar(on ? .55 : 1); a.mesh.scale.setScalar(on ? .97 : 1); needs = true;
+  }
+  function leafCanvas() {
+    const c = cnv(128, 128), x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 128, 128); g.addColorStop(0, '#2f5d2a'); g.addColorStop(.55, '#3f7a35'); g.addColorStop(1, '#5c9a45');
+    x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+    const hh = hash2(12); for (let i = 0; i < 500; i++) { x.fillStyle = `rgba(${hh(i, 1) > .5 ? '190,220,120' : '10,40,15'},${hh(i, 2) * .1})`; x.fillRect(hh(i, 3) * 128, hh(i, 4) * 128, 3, 3); }
+    x.strokeStyle = 'rgba(205,228,150,.75)'; x.lineWidth = 2.2; x.beginPath(); x.moveTo(64, 94); x.lineTo(64, 2); x.stroke();   // midrib
+    x.lineWidth = 1; x.strokeStyle = 'rgba(205,228,150,.4)';
+    for (let i = 0; i < 6; i++) { const y = 84 - i * 13; for (const sg of [-1, 1]) { x.beginPath(); x.moveTo(64, y); x.quadraticCurveTo(64 + sg * 22, y - 4, 64 + sg * (44 - i * 4), y + 6 - i); x.stroke(); } }
+    return c;
+  }
+  function buildVine() {
+    const g = new THREE.Group(), rnd = hash2(91);
+    const sh = new THREE.Shape(); sh.moveTo(0, -1); sh.bezierCurveTo(.75, -.55, .95, .25, .5, .62); sh.bezierCurveTo(.25, .82, .05, .6, 0, .42); sh.bezierCurveTo(-.05, .6, -.25, .82, -.5, .62); sh.bezierCurveTo(-.95, .25, -.75, -.55, 0, -1);
+    const lg = new THREE.ShapeGeometry(sh, 10), pos = lg.attributes.position, uv = lg.attributes.uv;
+    for (let i = 0; i < pos.count; i++) { const X = pos.getX(i), Y = pos.getY(i); uv.setXY(i, (X + 1) / 2, (Y + 1) / 2); pos.setZ(i, -Math.abs(X) * .28 - (Y + 1) * (Y + 1) * .05); pos.setY(i, Y - .42); }
+    lg.computeVertexNormals();
+    const lt = tex(leafCanvas());
+    const mats = ['#ffffff', '#d9efc0', '#b8d69a'].map(c => new THREE.MeshStandardMaterial({ map: lt, color: c, side: THREE.DoubleSide, roughness: .5 }));
+    const stemMat = new THREE.MeshStandardMaterial({ color: '#4a5a2a', roughness: .7 });
+    const x0 = -visW / 2 + .9;
+    [[0, 36, 2.6], [1.5, 24, 3.4], [3.3, 13, 2.9], [5.4, 7, 3.2]].forEach(([dx, len, z], si) => {
+      const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(x0 + dx + Math.sin(t * 5 + si * 2) * .7 + t * (si ? .3 : -.2), H + 2.5 - t * len, z + Math.sin(t * 3 + si) * .5)); }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, .075, 5), stemMat); tube.castShadow = true; g.add(tube);
+      const n = Math.round(len / 2.3);
+      for (let k = 0; k < n; k++) {
+        const t = (k + .6) / n, pt = curve.getPoint(Math.min(1, t)), sd = k % 2 ? 1 : -1;
+        const leaf = new THREE.Mesh(lg, mats[(k + si) % 3]);
+        const sc = (1.55 + rnd(k, si) * .9) * (1 - t * .3);
+        leaf.scale.setScalar(sc); leaf.position.copy(pt).add(new THREE.Vector3(sd * .12, 0, .2 + rnd(k, si + 9) * .5));
+        leaf.rotation.set(-.25 + rnd(k, si + 3) * .5, sd * (.15 + rnd(k, si + 5) * .5), sd * (.35 + rnd(k, si + 7) * .75));
+        leaf.castShadow = leaf.receiveShadow = true; g.add(leaf);
+      }
+    });
+    return g;
+  }
+  function applyLamps() {
+    lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? 3 : 0);
+    key.intensity = lamps ? 1.5 : 3.0; fill.intensity = lamps ? .22 : .32; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .04 : .12;
+    scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
+  }
+  let woodSeed = 0;
+  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, .8); }
   function buildCase() {
-    caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { if (m === ironMat || m === brassEdge) return; m.map && m.map !== backMap && m.map.dispose?.(); m.dispose(); }); } });
+    caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { if (m === ironMat || m === brassEdge) return; m.map && m.map.dispose?.(); m.dispose(); }); } });
     caseGroup.clear();
     const d = camera.position.z; const backScale = (d + DEPTH) / d;
     const W = visW * backScale + 8, BH = H * backScale + 20;
     // back panel
-    const bm = new THREE.MeshStandardMaterial({ map: backMap, bumpMap: backBump, bumpScale: .25, roughness: .72 });
-    bm.map.repeat.set(W / 150, 1); bm.bumpMap.repeat.copy(bm.map.repeat);
+    woodSeed = 0;
+    const bm = woodMaterial(1, 77, 7.5, .62);   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
     const aoTex = tex(aoCanvas(), false);
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
-      const ao = new THREE.Mesh(new THREE.PlaneGeometry(W, HC), new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }));
+      const ao = new THREE.Mesh(new THREE.PlaneGeometry(visW * ((camera.position.z + DEPTH) / camera.position.z), HC), new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }));
       ao.position.set(0, base + HC / 2, -DEPTH + .05); caseGroup.add(ao);
     }
     // boards
@@ -384,16 +588,35 @@ export async function createShelf3D(el, opts) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(bw, thick, DEPTH + 1), boardMat(bw, DEPTH));
       m.position.set(0, isTop ? y + thick / 2 - BT / 2 : y, -DEPTH / 2 + .5); m.castShadow = m.receiveShadow = true; caseGroup.add(m);
       // a slightly rounded lip on the front edge
-      const lip = new THREE.Mesh(new THREE.CylinderGeometry(thick / 2, thick / 2, bw, 16, 1, true), boardMat(bw, 4));
+      const lip = new THREE.Mesh(new THREE.CylinderGeometry(thick / 2, thick / 2, bw, 16, 1, true), boardMat(bw, 4, 1));
       lip.rotation.z = Math.PI / 2; lip.scale.set(1, 1, .35); lip.position.set(0, m.position.y, 1); lip.receiveShadow = true; caseGroup.add(lip);
     });
     // side frame, like a real case
     const POST = 1.2;
     [-1, 1].forEach(sgn => {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(POST, H + 10, DEPTH + 2), boardMat(H, DEPTH));
-      post.material.emissive.set('#3a2410'); post.material.emissiveIntensity = .55; post.material.map.rotation = Math.PI / 2; post.material.bumpMap.rotation = Math.PI / 2;
+      const post = new THREE.Mesh(new THREE.BoxGeometry(POST, H + 10, DEPTH + 2), boardMat(H, DEPTH, 1));
+       
       post.position.set(sgn * (visW / 2 - POST / 2), H / 2, -DEPTH / 2 + .9); post.castShadow = post.receiveShadow = true; caseGroup.add(post);
     });
+    // carved buttons in the base
+    anchorBoxes.length = 0;
+    const carveW = 4.0;
+    [['more', 'book', -1, 0], ['lamp', 'lamp', -1, 1], ['add', 'add', 1, 0]].forEach(([kind, icon, sgn, slot]) => {
+      const mp = carveMaps(icon, '');
+      const nm = new THREE.CanvasTexture(mp.normal); nm.colorSpace = THREE.NoColorSpace;
+      const mat = new THREE.MeshStandardMaterial({ map: tex(mp.color), normalMap: nm, normalScale: new THREE.Vector2(1.4, 1.4), transparent: true, roughness: .7, depthWrite: false });
+      const ch = carveW * mp.aspect, cxp = sgn * (visW / 2 - 1.2 - 1.6 - carveW / 2 - slot * (carveW + 1.1)), cyp = PL / 2 + .35;
+      const q = new THREE.Mesh(new THREE.PlaneGeometry(carveW, ch), mat); q.position.set(cxp, cyp, .32); q.renderOrder = 3; caseGroup.add(q);
+      anchorBoxes.push({ kind, mesh: q, x: cxp, y: cyp, w: carveW, h: ch });
+    });
+    // the maker's name, carved in the middle of the base
+    {
+      const mp = carveMaps('word', 'Bookkeeper');
+      const nm = new THREE.CanvasTexture(mp.normal); nm.colorSpace = THREE.NoColorSpace;
+      const mat = new THREE.MeshStandardMaterial({ map: tex(mp.color), normalMap: nm, normalScale: new THREE.Vector2(1.3, 1.3), transparent: true, roughness: .7, depthWrite: false });
+      const ww = Math.min(13, visW - 2 * (1.2 + 1.6 + 2 * carveW + 1.1) - 2), wh = ww * mp.aspect;
+      const q = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); q.position.set(0, PL / 2 + .35, .32); q.renderOrder = 3; caseGroup.add(q);
+    }
     // plinth
     const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); 
     pm.position.set(0, PL / 2, -1.2); pm.receiveShadow = true; caseGroup.add(pm);
@@ -411,8 +634,28 @@ export async function createShelf3D(el, opts) {
       const plate = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, .12), [brassEdge, brassEdge, brassEdge, brassEdge, mat, brassEdge]);
       plate.position.set(0, y, 1.48); plate.castShadow = true; caseGroup.add(plate);
     });
+    caseGroup.add(buildVine());
+    // downlights under each shelf
+    lampObjs.length = 0; lampPucks.length = 0;
+    const pc = cnv(256, 256), px = pc.getContext('2d'); px.fillStyle = '#000'; px.fillRect(0, 0, 256, 256);
+    px.save(); px.translate(128, 0); px.scale(.5, 1); const pg = px.createRadialGradient(0, -6, 4, 0, -6, 235);
+    pg.addColorStop(0, 'rgba(255,236,200,1)'); pg.addColorStop(.12, 'rgba(255,214,150,.75)'); pg.addColorStop(.5, 'rgba(255,180,100,.2)'); pg.addColorStop(1, 'rgba(0,0,0,0)');
+    px.fillStyle = pg; px.fillRect(-256, 0, 512, 256); px.restore();
+    const nL = Math.max(2, Math.round(visW / 10)), poolTex = tex(pc, true, 1); poolTex.wrapS = THREE.RepeatWrapping; poolTex.repeat.set(nL, 1);
+    const puckMat = new THREE.MeshStandardMaterial({ color: '#2a2622', metalness: .6, roughness: .4, emissive: '#ffd9a0', emissiveIntensity: 0 }); lampPucks.push(puckMat);
+    for (let j = 0; j < 3; j++) {
+      const base = PL + BT + j * (HC + BT);
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(visW * backScale, HC), new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .8 }));
+      pool.position.set(0, base + HC / 2, -DEPTH + .12); pool.renderOrder = 1; caseGroup.add(pool); lampObjs.push(pool);
+      for (let i = 0; i < nL; i++) {
+        const lx = -visW / 2 + (i + .5) * visW / nL;
+        const puck = new THREE.Mesh(new THREE.CylinderGeometry(.75, .75, .22, 20), puckMat); puck.position.set(lx, base + HC - .11, -DEPTH + 4); caseGroup.add(puck);
+      }
+      for (const sx of [-.27, .27]) { const pl = new THREE.PointLight(0xffc98a, 520, 70, 1.8); pl.position.set(sx * visW, base + HC - 2, -5); caseGroup.add(pl); lampObjs.push(pl); }
+    }
+    applyLamps();
     // light
-    key.position.set(-visW * .22 - 6, H + 55, 150); key.target.position.set(0, H / 2, -DEPTH / 2);
+    key.position.set(-visW * .15 - 4, H + 95, 150); key.target.position.set(0, H / 2, -DEPTH / 2);
     const sc = key.shadow.camera; const R = Math.max(W, H) * .9 + 40; sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 400; sc.updateProjectionMatrix();
   }
 
@@ -551,7 +794,7 @@ export async function createShelf3D(el, opts) {
       g.userData.front_z = d / 2;
       add(new THREE.BoxGeometry(t, h, CT), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
     }
-    g.userData.book = b; g.userData.col = col; g.userData.boardMat = board;
+    g.userData.book = b; g.userData.col = col; g.userData.boardMat = board; g.userData.dims = dims;
     return g;
   }
   function buildBooks() {
@@ -645,11 +888,12 @@ export async function createShelf3D(el, opts) {
   let drag = null;
   const pxToWorld = () => visW / el.clientWidth;
   el.addEventListener('pointerdown', e => {
+    if (pulled) { drag = { dismiss: true }; return; }
     const row = rowAt(e); drag = { x: e.clientX, y: e.clientY, t: e.timeStamp, row, last: e.clientX, lt: performance.now(), moved: false };
     if (row) row.vel = 0;
   });
   el.addEventListener('pointermove', e => {
-    if (!drag) return; const dx = e.clientX - drag.x;
+    if (!drag || drag.dismiss) return; const dx = e.clientX - drag.x;
     if (!drag.moved && Math.abs(dx) > 7 && Math.abs(dx) > Math.abs(e.clientY - drag.y)) { drag.moved = true; try { el.setPointerCapture(e.pointerId) } catch { } }
     if (drag.moved && drag.row) {
       const now = performance.now(), step = (e.clientX - drag.last) * pxToWorld();
@@ -659,6 +903,7 @@ export async function createShelf3D(el, opts) {
   });
   const end = e => {
     if (!drag) return; const d = drag; drag = null;
+    if (d.dismiss) { if (e.type === 'pointerup') onDismiss?.(); return; }
     if (!d.moved && e.timeStamp - d.t < 450 && e.type === 'pointerup') pick(e);
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
@@ -677,30 +922,56 @@ export async function createShelf3D(el, opts) {
     } else { fb.material = fb.material.slice(); fb.material[0] = m.userData.boardMat; }
     (m.userData.aos || []).forEach(q => q.visible = !on);
   }
+  const dim = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshBasicMaterial({ color: 0x0a0603, transparent: true, opacity: 0, depthWrite: false }));
+  dim.position.z = 14; dim.renderOrder = 10; dim.visible = false; scene.add(dim);
+  const findPivot = id => { for (const r of rows) for (const p of r.items) if (p.userData.id === id) return p; return null; };
+  const cancel = (...objs) => { for (let i = tweens.length - 1; i >= 0; i--) if (objs.includes(tweens[i].obj)) tweens.splice(i, 1); };
+  const outZ = p => p.userData.home.z + (p.userData.d || 14) * .55 + 4;
+  function heroTarget(p) {
+    const m = p.children[0], dm = m.userData.dims, d = camera.position.z;
+    const k = Math.min(1.75, Math.max(1.15, .29 * H / dm.h));          // how much nearer the camera
+    const row = rows.find(r => r.items.includes(p));
+    const yc = camera.position.y;
+    return { x: -(row ? row.group.position.x : 0) - m.position.x, y: yc + (.80 * H - yc) / k - m.position.y, z: d * (1 - 1 / k) };
+  }
+  // The book leaves the shelf, turns its cover to you and rises to the top of the screen.
+  function toHero(p, instant, delay = 0) {
+    const m = p.children[0], t = heroTarget(p);
+    showCover(m, true); m.traverse(o => { if (o.isMesh) o.castShadow = false; }); dim.visible = true;
+    const go = (o, k, v, dur) => { if (instant) o[k] = v; else tween(o, k, v, dur, delay); };
+    go(p.position, 'x', t.x, 560); go(p.position, 'y', t.y, 560); go(p.position, 'z', t.z, 560);
+    go(m.rotation, 'y', -Math.PI / 2 + .2, 520); go(m.rotation, 'z', 0, 420);
+    go(p.rotation, 'z', 0, 420); go(p.rotation, 'y', 0, 420);
+    go(dim.material, 'opacity', .58, 520);
+    needs = true;
+  }
   function pick(e) {
     scene.updateMatrixWorld(); toNDC(e); ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(booksGroup.children, true)[0]; if (!hit) return;
     let p = hit.object; while (p && !p.userData?.home) p = p.parent; if (!p) return;
     pushBack(); pulled = p;
-    const m = p.children[0], d = p.userData.d || 14;
-    if (p.userData.flat) {
-      tween(p.position, 'z', p.userData.home.z + d * .5 + 3, 300);
-      setTimeout(() => onPick(p.userData.id), 380); return;
-    }
-    showCover(m, true);
-    tween(p.position, 'z', p.userData.home.z + d * .55 + 5, 260);
-    tween(p.position, 'y', p.userData.home.y + .8, 260);
-    tween(m.rotation, 'y', -1.22, 360, 200);
-    setTimeout(() => onPick(p.userData.id), 760);
+    cancel(p.position, p.rotation, p.children[0].rotation, dim.material);
+    tween(p.position, 'z', outZ(p), 240);                               // 1. slide out of the row
+    tween(p.position, 'y', p.userData.home.y + (p.userData.flat ? 1.6 : .6), 240);
+    toHero(p, false, 200);                                              // 2. turn and rise
+    setTimeout(() => { if (pulled === p) onPick(p.userData.id); }, 520); // 3. the sheet comes up to meet it
+  }
+  function focus(id) {
+    if (pulled && pulled.userData.id === id) return;
+    const p = findPivot(id); if (!p) return;
+    pushBack(); pulled = p; cancel(p.position, p.rotation, p.children[0].rotation, dim.material); toHero(p, false);
   }
   function pushBack() {
-    if (!pulled) return; const p = pulled; pulled = null; const m = p.children[0];
-    tween(m.rotation, 'y', 0, 300);
-    tween(p.position, 'z', p.userData.home.z, 380, 220); tween(p.position, 'y', p.userData.home.y, 380, 220);
-    setTimeout(() => { if (pulled !== p) { showCover(m, false); needs = true; } }, 640);
+    if (!pulled) return; const p = pulled; pulled = null; const m = p.children[0], h = p.userData.home, r0 = p.userData.rot;
+    cancel(p.position, p.rotation, m.rotation, dim.material);
+    tween(p.position, 'x', h.x, 420); tween(p.position, 'y', h.y + .6, 420); tween(p.position, 'z', outZ(p), 420);
+    tween(m.rotation, 'y', 0, 400); tween(m.rotation, 'z', p.userData.flat ? Math.PI / 2 : 0, 400);
+    tween(p.rotation, 'z', r0.z, 400); tween(p.rotation, 'y', r0.y, 400);
+    tween(dim.material, 'opacity', 0, 380);
+    tween(p.position, 'z', h.z, 300, 400); tween(p.position, 'y', h.y, 300, 400);
+    setTimeout(() => { if (pulled !== p) { showCover(m, false); m.traverse(o => { if (o.isMesh && o.material !== edgeAOMat) o.castShadow = true; }); needs = true; } if (!pulled) dim.visible = false; }, 740);
   }
   function tween(obj, prop, to, dur, delay = 0) {
-    for (let i = tweens.length - 1; i >= 0; i--) if (tweens[i].obj === obj && tweens[i].prop === prop) tweens.splice(i, 1);
     tweens.push({ obj, prop, from: null, to, dur, start: performance.now() + delay });
   }
 
@@ -708,7 +979,8 @@ export async function createShelf3D(el, opts) {
     if (disposed) return; raf = requestAnimationFrame(loop);
     const now = performance.now();
     for (let i = tweens.length - 1; i >= 0; i--) {
-      const t = tweens[i]; if (now < t.start) { needs = true; continue; } if (t.from === null) t.from = t.obj[t.prop];
+      const t = tweens[i]; if (t.dead) { tweens.splice(i, 1); continue; } if (now < t.start) { needs = true; continue; }
+      if (t.from === null) { for (const o of tweens) if (o !== t && o.obj === t.obj && o.prop === t.prop && o.from !== null) o.dead = true; t.from = t.obj[t.prop]; }
       const k = Math.min(1, (now - t.start) / t.dur), e = 1 - Math.pow(1 - k, 3);
       t.obj[t.prop] = t.from + (t.to - t.from) * e; needs = true; if (k >= 1) tweens.splice(i, 1);
     }
@@ -720,19 +992,30 @@ export async function createShelf3D(el, opts) {
     if (needs && !paused) { renderer.render(scene, camera); needs = false; }
   }
 
-  const ro = new ResizeObserver(() => { if (frame()) { buildCase(); buildBooks(); } });
+  function rebuild() {
+    const pid = pulled?.userData.id, offs = rows.map(r => r.offset);
+    tweens.length = 0; pulled = null;
+    buildCase(); buildBooks(); placeAnchors();
+    rows.forEach((r, i) => setOffset(r, offs[i] ?? 0));
+    const p = pid && findPivot(pid);
+    if (p) { pulled = p; toHero(p, true); } else { dim.material.opacity = 0; dim.visible = false; }
+    needs = true;
+  }
+  const ro = new ResizeObserver(() => { if (frame()) rebuild(); });
   ro.observe(el);
-  frame(); buildCase(); buildBooks(); loop();
+  frame(); buildCase(); buildBooks(); placeAnchors();
+  await Promise.race([envReady, new Promise(r => setTimeout(r, 2500))]);
+  renderer.render(scene, camera); loop();
 
   return {
     el,
     update(nextBooks, nextView) {
-      const offsets = rows.map(r => r.offset);
-      books = nextBooks.slice(); view = nextView; pulled = null;
-      buildCase(); buildBooks();
-      rows.forEach((r, i) => setOffset(r, offsets[i] ?? 0));
+      books = nextBooks.slice(); view = nextView; rebuild();
     },
-    pushBack,
+    pushBack, focus,
+    setLamps(v) { lamps = !!v; applyLamps(); },
+    setAnchors(a) { anchors = a; placeAnchors(); },
+    press: pressAnchor,
     pause(v) { paused = v; if (!v) needs = true; },
     destroy() { disposed = true; cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); renderer.domElement.remove(); }
   };

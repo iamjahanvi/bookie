@@ -273,3 +273,43 @@ body.home-on .bookcase3d.flat{overflow-y:auto;background:var(--paper);padding:ca
   background:rgba(29,26,22,.55);border:1px solid rgba(246,239,226,.28);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .sheet .pull{margin-top:16px}
 .sheet .stats{margin-top:26px}
+
+/* carved buttons: invisible hit areas laid over the icons cut into the bookcase base */
+.fab.etched,.morebtn.etched{position:fixed;transform:none;right:auto;bottom:auto;padding:0;margin:0;border:0;border-radius:18px;
+  background:transparent;box-shadow:none;color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;z-index:6;
+  transition:background .15s}
+.fab.etched>*,.morebtn.etched>*{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.fab.etched:active,.morebtn.etched:active{background:radial-gradient(closest-side,rgba(20,10,4,.18),transparent)}
+.fab.etched:focus-visible,.morebtn.etched:focus-visible{outline:2px solid rgba(230,200,140,.8);outline-offset:2px}
+
+/* ---------- loading screen ---------- */
+#loader{position:fixed;inset:0;z-index:100;background:#2b1a0e;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .5s ease,visibility 0s linear .5s}
+#loader.gone{opacity:0;visibility:hidden;pointer-events:none}
+.ld-books{display:flex;align-items:flex-end;gap:3px;height:74px}
+.ld-books i{display:block;width:13px;border-radius:2px 2px 0 0;transform-origin:50% 100%;animation:ld 1.5s cubic-bezier(.4,0,.2,1) infinite both}
+.ld-books i:nth-child(1){height:58px;background:#8c2f39}
+.ld-books i:nth-child(2){height:70px;background:#c9a227;width:10px;animation-delay:.12s}
+.ld-books i:nth-child(3){height:50px;background:#3c6e47;width:16px;animation-delay:.24s}
+.ld-books i:nth-child(4){height:64px;background:#e6d3ad;animation-delay:.36s}
+.ld-books i:nth-child(5){height:54px;background:#2f4858;width:11px;animation-delay:.48s}
+@keyframes ld{0%{transform:translateY(-26px);opacity:0}22%{transform:translateY(0);opacity:1}26%{transform:translateY(-3px)}30%,78%{transform:translateY(0);opacity:1}100%{transform:translateY(0);opacity:0}}
+.ld-plank{width:108px;height:7px;border-radius:1px;background:linear-gradient(#8a5a31,#5a3820)}
+#loader p{margin:22px 24px 0;color:#d9c3a3;font-style:italic;font-size:16px;text-align:center}
+@media (prefers-reduced-motion:reduce){.ld-books i{animation:none}}
+
+/* ---------- book page as a sheet under the lifted book ---------- */
+body.has3d .detail{inset:38vh 0 0 0;inset:38svh 0 0 0;border-radius:22px 22px 0 0;box-shadow:0 -20px 44px rgba(0,0,0,.4);
+  transition:transform .46s cubic-bezier(.2,.8,.2,1),visibility 0s linear .46s}
+body.has3d .detail.open{transition:transform .46s cubic-bezier(.2,.8,.2,1),visibility 0s}
+body.has3d .detail:before{content:"";position:absolute;left:50%;top:8px;width:42px;height:4px;margin-left:-21px;border-radius:4px;background:var(--rule);z-index:3}
+body.has3d .detail .dbar{padding-top:16px;border-radius:22px 22px 0 0}
+body.has3d .detail .hero{display:block;text-align:center;margin-top:-34px;padding:0 52px}
+body.has3d .detail .hero .cover{display:none}
+body.has3d .detail .blurb{text-align:center}
+body.home-on{background:#2b1a0e}
+
+/* light falls off toward the edges and the floor, as in a photograph */
+.bookcase3d:not(.flat):after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(125% 95% at 50% 35%,transparent 50%,rgba(8,4,1,.34) 100%),linear-gradient(transparent 70%,rgba(8,4,1,.14))}
+#lamp:not(.etched){display:none}

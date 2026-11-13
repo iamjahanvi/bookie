@@ -19,6 +19,8 @@ const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const STATUS = { want: 'Next read', reading: 'Reading', finished: 'Finished' };
 const proxied = url => 'api/cover?u=' + encodeURIComponent(url);
 const olCover = (id, size = 'L') => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg`;
+function hideLoader() { clearTimeout(hideLoader._t); $('#loader')?.classList.add('gone') }
+hideLoader._t = setTimeout(() => { const t = $('#loader p'); if (t) t.textContent = 'Still setting up… a slow connection can take a moment.' }, 7000);
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2800) }
 const ICON = {
   back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg>',
@@ -169,14 +171,24 @@ async function init3d() {
   try {
     const gl = document.createElement('canvas').getContext('webgl2'); if (!gl) throw new Error('no webgl2');
     const m = await import('./shelf3d.js?v=' + (document.querySelector('script[src^="app.js"]')?.src.split('v=')[1] || ''));
-    shelf3d = await m.createShelf3D($('#bc'), { colorsOf, coverSrc: coverSources, onPick: id => openDetail(id) });
-    shelf3dState = 'ready'; $('#bc').classList.add('ready');
+    shelf3d = await m.createShelf3D($('#bc'), { colorsOf, coverSrc: coverSources, onPick: id => openDetail(id), onDismiss: () => closeDetail(), lamps: pref.get('lamps', '0') === '1' });
+    shelf3dState = 'ready'; $('#bc').classList.add('ready'); document.body.classList.add('has3d');
+    const fab = $('#fab'), more = $('#more'), lamp = $('#lamp');
+    lamp.onclick = () => { const on = pref.get('lamps', '0') !== '1'; pref.set('lamps', on ? '1' : '0'); lamp.setAttribute('aria-pressed', on); shelf3d.setLamps(on) };
+    lamp.setAttribute('aria-pressed', pref.get('lamps', '0') === '1');
+    [[fab, 'add'], [more, 'more'], [lamp, 'lamp']].forEach(([n, k]) => {
+      n.classList.add('etched');
+      n.addEventListener('pointerdown', () => { shelf3d.press(k, true); try { navigator.vibrate?.(8) } catch { } });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => n.addEventListener(ev, () => shelf3d.press(k, false)));
+    });
+    shelf3d.setAnchors({ add: fab, more, lamp });
   } catch (e) { console.warn('3D bookcase unavailable, using flat shelves', e); shelf3dState = 'failed' }
+  hideLoader();
   refresh();
 }
 function renderHome() {
   const app = $('#app');
-  if (S.mode === 'loading') { app.innerHTML = '<div class="loading">Dusting the shelves…</div>'; return }
+  if (S.mode === 'loading') { app.innerHTML = ''; return }
   if (S.mode === 'gate') return;
   if (shelf3d && !document.body.contains(shelf3d.el)) { shelf3d.destroy(); shelf3d = null; shelf3dState = 'idle' }
   S.view = 'spines';
@@ -184,7 +196,7 @@ function renderHome() {
   if (!$('#home')) {
     document.body.classList.add('home-on');
     app.innerHTML = `<div id="home"><div class="bookcase3d" id="bc"><div class="bc-hint" id="bc-hint"></div></div>
-      <button class="morebtn" id="more" aria-label="Lines and stats">Lines &amp; stats</button></div>`;
+      <button class="morebtn" id="more" aria-label="Lines and stats"><span>Lines &amp; stats</span></button><button class="morebtn" id="lamp" aria-label="Shelf lights"><span>Lights</span></button></div>`;
     $('#more').onclick = moreSheet;
     if (shelf3dState === 'idle') init3d();
   }
@@ -223,8 +235,8 @@ function coverHTML(b, cls = 'cover') {
     <div><div class="ct">${esc(b.title || 'Untitled')}</div><div class="cr"></div></div><div class="ca">${esc(b.author || '')}</div>
     ${b.coverUrl ? `<img src="${esc(b.coverUrl)}" alt="" onerror="this.remove()">` : ''}</div>`;
 }
-function openDetail(id) { S.openId = id; renderDetail(); const d = $('#detail'); d.scrollTop = 0; d.setAttribute('aria-hidden', 'false'); requestAnimationFrame(() => d.classList.add('open')); clearTimeout(openDetail._p); openDetail._p = setTimeout(() => S.openId && shelf3d?.pause(true), 450) }
-function closeDetail() { clearTimeout(openDetail._p); shelf3d?.pause(false); shelf3d?.pushBack(); const d = $('#detail'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); S.openId = null; setTimeout(() => { if (!S.openId) d.innerHTML = '' }, 400) }
+function openDetail(id) { S.openId = id; renderDetail(); const d = $('#detail'); d.scrollTop = 0; d.setAttribute('aria-hidden', 'false'); requestAnimationFrame(() => d.classList.add('open')); shelf3d?.focus(id) }
+function closeDetail() { shelf3d?.pushBack(); const d = $('#detail'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); S.openId = null; setTimeout(() => { if (!S.openId) d.innerHTML = '' }, 400) }
 function renderDetail() {
   const b = S.books.get(S.openId), d = $('#detail');
   if (!b) { if (S.openId) closeDetail(); return }
@@ -540,7 +552,7 @@ function shareSheet(b, q) {
 
 /* ---------- sign in ---------- */
 function renderGate() {
-  S.mode = 'gate'; $('#fab').hidden = true; document.body.classList.remove('home-on');
+  S.mode = 'gate'; $('#fab').hidden = true; hideLoader(); document.body.classList.remove('home-on');
   const spines = [[34, 110, '#8c2f39'], [46, 120, '#2f4858'], [28, 96, '#c9a227'], [40, 114, '#3c6e47'], [52, 104, '#e6d3ad'], [32, 118, '#4a3f6b']];
   $('#app').innerHTML = `<div class="gate">
     <div class="case" style="width:auto;margin:0 -24px"><div class="mini-shelf" style="padding:0 24px">${spines.map(([w, h, c]) => `<span style="width:${w}px;height:${h}px;background:${c}"></span>`).join('')}</div><div class="plank"><i class="top"></i><i class="front"></i></div></div>
