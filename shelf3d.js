@@ -540,31 +540,63 @@ export async function createShelf3D(el, opts) {
     for (let i = 0; i < 6; i++) { const y = 84 - i * 13; for (const sg of [-1, 1]) { x.beginPath(); x.moveTo(64, y); x.quadraticCurveTo(64 + sg * 22, y - 4, 64 + sg * (44 - i * 4), y + 6 - i); x.stroke(); } }
     return c;
   }
-  function buildVine() {
-    const g = new THREE.Group(), rnd = hash2(91);
+  // ---- a potted pothos that sits in the emptiest shelf and trails over its edge ----
+  const plantGroup = new THREE.Group(); scene.add(plantGroup);
+  let plantKit = null;
+  function getPlantKit() {
+    if (plantKit) return plantKit;
     const sh = new THREE.Shape(); sh.moveTo(0, -1); sh.bezierCurveTo(.75, -.55, .95, .25, .5, .62); sh.bezierCurveTo(.25, .82, .05, .6, 0, .42); sh.bezierCurveTo(-.05, .6, -.25, .82, -.5, .62); sh.bezierCurveTo(-.95, .25, -.75, -.55, 0, -1);
     const lg = new THREE.ShapeGeometry(sh, 10), pos = lg.attributes.position, uv = lg.attributes.uv;
     for (let i = 0; i < pos.count; i++) { const X = pos.getX(i), Y = pos.getY(i); uv.setXY(i, (X + 1) / 2, (Y + 1) / 2); pos.setZ(i, -Math.abs(X) * .28 - (Y + 1) * (Y + 1) * .05); pos.setY(i, Y - .42); }
     lg.computeVertexNormals();
     const lt = tex(leafCanvas());
-    const mats = ['#ffffff', '#d9efc0', '#b8d69a'].map(c => new THREE.MeshStandardMaterial({ map: lt, color: c, side: THREE.DoubleSide, roughness: .5 }));
-    const stemMat = new THREE.MeshStandardMaterial({ color: '#4a5a2a', roughness: .7 });
-    const x0 = -visW / 2 + .9;
-    [[0, 23, 2.4, -1], [.3, 13, 2.9, -1], [.5, 6, 2.6, -1], [.1, 10, 2.5, 1], [.4, 4.5, 2.9, 1]].forEach(([dx, len, z, sg], si) => {
-      const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(sg * (visW / 2 - .45 - dx) + Math.sin(t * 5 + si * 2) * .16 + sg * t * .1, H + 2.5 - t * len, z + Math.sin(t * 3 + si) * .5)); }
-      const curve = new THREE.CatmullRomCurve3(pts);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, .075, 5), stemMat); tube.castShadow = true; g.add(tube);
-      const n = Math.round(len / 1.5);
+    const prof = [[0, 0], [1.45, 0], [1.55, .15], [1.95, 3.0], [2.15, 3.0], [2.15, 3.55], [1.8, 3.55], [1.75, 3.2], [0, 3.2]].map(([r, y]) => new THREE.Vector2(r, y));
+    plantKit = {
+      leaf: lg,
+      mats: ['#ffffff', '#d9efc0', '#b8d69a'].map(c => new THREE.MeshStandardMaterial({ map: lt, color: c, side: THREE.DoubleSide, roughness: .5 })),
+      stem: new THREE.MeshStandardMaterial({ color: '#4a5a2a', roughness: .7 }),
+      potGeo: new THREE.LatheGeometry(prof, 28),
+      potMat: new THREE.MeshStandardMaterial({ color: '#b4603a', roughness: .82 }),
+      soilGeo: new THREE.CircleGeometry(1.76, 24),
+      soilMat: new THREE.MeshStandardMaterial({ color: '#2a1b10', roughness: 1 }),
+    };
+    return plantKit;
+  }
+  function buildPlant(px, base) {
+    const kit = getPlantKit(), g = new THREE.Group(), rnd = hash2(91), pz = -8.5, S = 1.3, top = base + 3.3 * S;
+    const pot = new THREE.Mesh(kit.potGeo, kit.potMat); pot.position.set(px, base, pz); pot.scale.setScalar(S); pot.castShadow = pot.receiveShadow = true; g.add(pot);
+    const soil = new THREE.Mesh(kit.soilGeo, kit.soilMat); soil.rotation.x = -Math.PI / 2; soil.position.set(px, base + 3.22 * S, pz); soil.scale.setScalar(S); g.add(soil);
+    const V = (x, y, z) => new THREE.Vector3(x, y, z), strands = [];
+    // a mound of foliage in the pot
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2 + .4, c = Math.cos(a), sn = Math.sin(a), up = 4 + rnd(i, 1) * 2.6;
+      strands.push({ pts: [V(px + c * .5, top, pz + sn * .5), V(px + c * 1.8, top + up, pz + sn * 1.8), V(px + c * 3.8, top + up - 1 - rnd(i, 2), pz + sn * 3)], size: 1.5 });
+    }
+    // trailers that run forward and spill over the edge of the shelf
+    [[-3.5, 8], [-5.3, 4], [2.3, 5.5]].forEach(([dx, drop], i) => {
+      strands.push({ pts: [V(px + dx * .3, top, pz + 1), V(px + dx * .7, top + 1.6, pz + 4), V(px + dx, base + 2.2, -2), V(px + dx, base + .5, 1.5), V(px + dx + .2, base - drop * .45, 2.3), V(px + dx - .2 + rnd(i, 5) * .6, base - drop, 2.4)], size: 1.15, trail: true });
+    });
+    strands.forEach(({ pts, size, trail }, si) => {
+      const curve = new THREE.CatmullRomCurve3(pts), len = curve.getLength();
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 30, .07, 5), kit.stem); tube.userData.temp = true; tube.castShadow = true; g.add(tube);
+      const n = Math.max(3, Math.round(len / 1.25));
       for (let k = 0; k < n; k++) {
-        const t = (k + .6) / n, pt = curve.getPoint(Math.min(1, t)), sd = k % 2 ? 1 : -1;
-        const leaf = new THREE.Mesh(lg, mats[(k + si) % 3]);
-        const sc = (.62 + rnd(k, si) * .36) * (1 - t * .25);
-        leaf.scale.setScalar(sc); leaf.position.copy(pt).add(new THREE.Vector3(sd * .1 + sg * .28, 0, .2 + rnd(k, si + 9) * .5));
-        leaf.rotation.set(-.25 + rnd(k, si + 3) * .5, sd * (.15 + rnd(k, si + 5) * .5), sd * (.35 + rnd(k, si + 7) * .75));
+        const t = (k + .7) / n, pt = curve.getPoint(Math.min(1, t)), sd = k % 2 ? 1 : -1;
+        if (trail && t < .34) continue;   // keep the pot itself in view
+        const leaf = new THREE.Mesh(kit.leaf, kit.mats[(k + si) % 3]);
+        leaf.scale.setScalar(size * (.8 + rnd(k, si) * .45));
+        leaf.position.copy(pt).add(V(sd * .25, 0, .15 + rnd(k, si + 9) * .4));
+        leaf.rotation.set(-.3 + rnd(k, si + 3) * .6, sd * (.15 + rnd(k, si + 5) * .5), sd * (.35 + rnd(k, si + 7) * .8));
         leaf.castShadow = leaf.receiveShadow = true; g.add(leaf);
       }
     });
     return g;
+  }
+  function placePlant() {
+    plantGroup.traverse(o => { if (o.userData.temp) o.geometry.dispose(); }); plantGroup.clear();
+    let best = null;
+    for (const r of rows) { const free = visW - 3.7 - r.contentW; if (free >= 12 && (!best || free > best.free + .5)) best = { r, free }; }
+    if (best) plantGroup.add(buildPlant(visW / 2 - 1.2 - 3.4, best.r.base));
   }
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? 3 : 0);
@@ -644,7 +676,6 @@ export async function createShelf3D(el, opts) {
       const plate = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, .12), [brassEdge, brassEdge, brassEdge, brassEdge, mat, brassEdge]);
       plate.position.set(0, y, 1.48); plate.castShadow = true; caseGroup.add(plate);
     });
-    caseGroup.add(buildVine());
     // downlights under each shelf
     lampObjs.length = 0; lampPucks.length = 0;
     const pc = cnv(256, 256), px = pc.getContext('2d'); px.fillStyle = '#000'; px.fillRect(0, 0, 256, 256);
@@ -883,6 +914,7 @@ export async function createShelf3D(el, opts) {
       const row = { st, group: g, items, base, contentW, offset: 0, vel: 0 };
       row.min = Math.min(0, visW - 3.7 - contentW); return row;
     });
+    placePlant();
     needs = true;
   }
 
