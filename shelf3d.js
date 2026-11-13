@@ -240,7 +240,7 @@ function typeSpine(x, w, h, b, style, ink, acc) {
 function hinges(x, w, h) {
   // the joint where spine meets each board: a fine groove with a lit lip
   for (const gx of [w * .045, w * .955]) {
-    x.fillStyle = 'rgba(0,0,0,.38)'; x.fillRect(gx - 1, 0, 2, h);
+    x.fillStyle = 'rgba(0,0,0,.14)'; x.fillRect(gx - 1, 0, 2, h);
     x.fillStyle = 'rgba(255,255,255,.12)'; x.fillRect(gx + (gx < w / 2 ? 1 : -2), 0, 1, h);
   }
 }
@@ -493,11 +493,11 @@ export async function createShelf3D(el, opts) {
   const gradTex = (() => { const c = cnv(64, 2), x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 64, 0);
     g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.35, 'rgba(0,0,0,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 2);
     const t = new THREE.CanvasTexture(c); return t; })();
-  const edgeAOMat = new THREE.MeshBasicMaterial({ map: gradTex, transparent: true, opacity: .5, depthWrite: false });
+  const edgeAOMat = new THREE.MeshBasicMaterial({ map: gradTex, transparent: true, opacity: .16, depthWrite: false });
   const vGradTex = (() => { const c = cnv(2, 64), x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 64);
     g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.4, 'rgba(0,0,0,.3)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 2, 64);
     return new THREE.CanvasTexture(c); })();
-  const floorAOMat = new THREE.MeshBasicMaterial({ map: vGradTex, transparent: true, opacity: .5, depthWrite: false });
+  const floorAOMat = new THREE.MeshBasicMaterial({ map: vGradTex, transparent: true, opacity: .16, depthWrite: false });
   const ironMat = new THREE.MeshStandardMaterial({ color: '#2a2622', metalness: .7, roughness: .42 });
   const brassEdge = new THREE.MeshStandardMaterial({ color: '#b48c42', metalness: 1, roughness: .38 });
   const spineNormal = new THREE.CanvasTexture(spineNormalCanvas()); spineNormal.colorSpace = THREE.NoColorSpace; spineNormal.wrapT = THREE.RepeatWrapping;
@@ -704,10 +704,10 @@ export async function createShelf3D(el, opts) {
   }
   function spineShading(x, w, h) {
     const g = x.createLinearGradient(0, 0, w, 0);
-    g.addColorStop(0, 'rgba(0,0,0,.28)'); g.addColorStop(.06, 'rgba(0,0,0,.04)'); g.addColorStop(.94, 'rgba(0,0,0,.06)'); g.addColorStop(1, 'rgba(0,0,0,.3)');
+    g.addColorStop(0, 'rgba(0,0,0,.1)'); g.addColorStop(.06, 'rgba(0,0,0,.02)'); g.addColorStop(.94, 'rgba(0,0,0,.02)'); g.addColorStop(1, 'rgba(0,0,0,.1)');
     x.fillStyle = g; x.fillRect(0, 0, w, h);
     // a touch of shelf wear at head and tail
-    const e = x.createLinearGradient(0, 0, 0, h); e.addColorStop(0, 'rgba(0,0,0,.18)'); e.addColorStop(.02, 'rgba(0,0,0,0)'); e.addColorStop(.98, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,.22)');
+    const e = x.createLinearGradient(0, 0, 0, h); e.addColorStop(0, 'rgba(0,0,0,.05)'); e.addColorStop(.02, 'rgba(0,0,0,0)'); e.addColorStop(.98, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,.06)');
     x.fillStyle = e; x.fillRect(0, 0, w, h);
   }
   function spineFromPhoto(dims, img) {
@@ -772,14 +772,14 @@ export async function createShelf3D(el, opts) {
     const hv = hashStr(b.id), jacket = hv % 3 !== 0;
     const sideCol = new THREE.Color(shade(col.bg, .92));
     const board = new THREE.MeshStandardMaterial({ color: sideCol, roughness: jacket ? .55 : .8, bumpMap: clothTex, bumpScale: jacket ? .15 : .5 });
-    const boardEdge = new THREE.MeshStandardMaterial({ color: sideCol.clone().multiplyScalar(.82), roughness: .85 });
+    const boardEdge = new THREE.MeshStandardMaterial({ color: sideCol.clone().multiplyScalar(.96), roughness: .85 });
     const spine = jacket
       ? new THREE.MeshPhysicalMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .55, 1), roughness: .5, clearcoat: .35, clearcoatRoughness: .45 })
       : new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .5, .9), roughness: .86, bumpMap: clothTex, bumpScale: .35 });
     // the sides take the colour of the cover's edge once the real cover arrives
     if (b.coverUrl && !b.spineUrl) loadImage(b.coverUrl).then(img => {
       if (!img) return;
-      try { const e = coverColours(img).edge; const k = new THREE.Color(rgbStr(e)); k.convertSRGBToLinear(); board.color.copy(k).multiplyScalar(.92); boardEdge.color.copy(k).multiplyScalar(.75); needs = true; } catch { }
+      try { const e = coverColours(img).edge; const k = new THREE.Color(rgbStr(e)); k.convertSRGBToLinear(); board.color.copy(k).multiplyScalar(.95); boardEdge.color.copy(k).multiplyScalar(.9); needs = true; } catch { }
     });
     const g = new THREE.Group(); g.userData.id = b.id;
     const add = (geo, mats, x, y, z) => { geoms.push(geo); const m = new THREE.Mesh(geo, mats); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; m.userData.id = b.id; g.add(m); return m; };
@@ -845,8 +845,8 @@ export async function createShelf3D(el, opts) {
         g.add(pivot); items.push(pivot);
       });
       const standW = x - left;
-      // shadow pooled on the shelf in front of the books
-      if (standing.length) {
+      // (the painted shadow strip in front of the books is gone; the real shadows do the work)
+      if (false) {
         const fs = new THREE.Mesh(new THREE.PlaneGeometry(standW + .4, 2.8), floorAOMat); geoms.push(fs.geometry);
         fs.rotation.x = -Math.PI / 2; fs.position.set(left + standW / 2, base + .02, -1.45 + 1.4 - .2);
         fs.renderOrder = 1; g.add(fs);
