@@ -874,7 +874,10 @@ export async function createShelf3D(el, opts) {
         const p = items[standing.length - 1], m = p.children[0], dims = sDims[standing.length - 1];
         const prev = items[standing.length - 2]; const prevRight = prev.position.x + sDims[standing.length - 2].t;
         const a = .2; m.position.x = -dims.t / 2;
-        p.position.x = prevRight + dims.h * Math.sin(a) + dims.t * Math.cos(a) - .15; p.rotation.z = a;
+        // it rests on its lower-left corner (the right side lifts off the shelf) and touches the neighbour's side or top corner
+        const hPrev = sDims[standing.length - 2].h;
+        p.position.x = prevRight + Math.min(dims.h * Math.sin(a), hPrev * Math.tan(a)) + dims.t * Math.cos(a) + .03; p.rotation.z = a;
+        p.position.y += dims.t * Math.sin(a);
         p.userData.home = p.position.clone(); p.userData.rot = p.rotation.clone();
       }
       const row = { st, group: g, items, base, contentW, offset: 0, vel: 0 };
