@@ -376,7 +376,7 @@ function carveMaps(kind, caption) {
     const dx = (at(X + 1, Y) - at(X - 1, Y)) * 4, dy = (at(X, Y + 1) - at(X, Y - 1)) * 4, l = Math.hypot(dx, dy, 1);
     ni.data[i * 4] = (-dx / l * .5 + .5) * 255; ni.data[i * 4 + 1] = (dy / l * .5 + .5) * 255; ni.data[i * 4 + 2] = (1 / l * .5 + .5) * 255; ni.data[i * 4 + 3] = 255;
     // groove: dark, burnished wood; alpha follows depth so the edge blends into the grain
-    ci.data[i * 4] = 14; ci.data[i * 4 + 1] = 7; ci.data[i * 4 + 2] = 3; ci.data[i * 4 + 3] = depth < .04 ? 0 : Math.min(255, Math.round(Math.pow(depth, .7) * 400));
+    ci.data[i * 4] = word ? 214 : 14; ci.data[i * 4 + 1] = word ? 176 : 7; ci.data[i * 4 + 2] = word ? 104 : 3; ci.data[i * 4 + 3] = depth < .04 ? 0 : Math.min(255, Math.round(Math.pow(depth, .7) * 400));
   }
   cx.putImageData(ci, 0, 0); nx.putImageData(ni, 0, 0);
   return { color: col, normal: nrm, aspect: h / w };
@@ -402,18 +402,18 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   }
   p += uSeed;
   vec3 q = p;
-  q.yz += (wfbm(vec3(p.x * .022, p.yz * .16)) - .5) * 2.0;         // the trunk is never straight
-  q.yz += (wn(vec3(p.x * .1, p.yz * .9)) - .5) * .12;
-  float r = length(q.yz - vec2(2., -34.)) * 2.7;                   // distance from the pith
+  q.yz += (wfbm(vec3(p.x * .018, p.yz * .14)) - .5) * 1.3;         // the trunk is never straight
+  q.yz += (wn(vec3(p.x * .1, p.yz * .9)) - .5) * .06;
+  float r = length(q.yz - vec2(2., -34.)) * 5.2;                   // distance from the pith
   float ring = fract(r), rid = floor(r);
   float yr = wh13(vec3(rid, 7., 3.));                              // every year grew differently
   float late = smoothstep(.45, .96, ring) * (1. - smoothstep(.96, 1., ring));   // darkens through the season, then starts again
-  float fibre = wn(vec3(p.x * .45, p.yz * 6.5));
-  float fine = wn(vec3(p.x * 1.3, p.yz * 9.));
-  float pore = smoothstep(.80, .90, wn(vec3(p.x * .9, p.yz * 11.))) * (1. - .6 * late);   // open pores, drawn out along the grain
+  float fibre = wn(vec3(p.x * .6, p.yz * 14.));
+  float fine = wn(vec3(p.x * 1.8, p.yz * 26.));
+  float pore = smoothstep(.83, .92, wn(vec3(p.x * 1.4, p.yz * 24.))) * (1. - .6 * late);   // open pores, drawn out along the grain
   float streak = wfbm(vec3(p.x * .01, p.yz * .3));               // long heartwood streaks
   vec3 cE = vec3(.150, .074, .034), cL = vec3(.050, .023, .011), cW = vec3(.215, .110, .050), cG = vec3(.080, .048, .030);
-  col = mix(cE, cL, late * (.4 + .35 * yr));
+  col = mix(cE, cL, late * (.26 + .3 * yr));
   col *= .9 + yr * .2;
   col = mix(col, cG, smoothstep(.5, .8, streak) * .4);
   col = mix(col, cW, smoothstep(.5, .2, streak) * .35);
@@ -422,11 +422,12 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col = mix(col, cL * .6, pore * .5);
   col *= mix(.18, 1., seam) * uTone;
   hgt = -late * .22 - pore * .8 + fibre * .1 - (1. - seam) * 2.5;
-  rgh = .7 + late * .08 + pore * .2 - (fibre - .5) * .1 + (streak - .5) * .1;
+  rgh = .46 + late * .08 + pore * .22 - (fibre - .5) * .08 + (streak - .5) * .08;
 }
 `;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .7, metalness: 0, envMapIntensity: .22, specularIntensity: .3 });
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .5, metalness: 0, envMapIntensity: .13, specularIntensity: .5, specularColor: new THREE.Color('#ffcf9a'), clearcoat: .1, clearcoatRoughness: .3, sheen: 0 });
+  m.envMapIntensity = .02;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
     sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
@@ -470,11 +471,11 @@ export async function createShelf3D(el, opts) {
   const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 2000);
 
   const hemi = new THREE.HemisphereLight(0xfff4e4, 0x6b4a2c, 0.12); scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xffd9ae, 3.0); key.castShadow = true;
+  const key = new THREE.DirectionalLight(0xffc98c, 3.0); key.castShadow = true;
   key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 16;
   scene.add(key, key.target);
-  const fill = new THREE.DirectionalLight(0xfff6ea, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
-  const rake = new THREE.DirectionalLight(0xfff0dc, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
+  const fill = new THREE.DirectionalLight(0xffd6a2, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
+  const rake = new THREE.DirectionalLight(0xffd6a2, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; } return t; };
@@ -541,15 +542,15 @@ export async function createShelf3D(el, opts) {
     const mats = ['#ffffff', '#d9efc0', '#b8d69a'].map(c => new THREE.MeshStandardMaterial({ map: lt, color: c, side: THREE.DoubleSide, roughness: .5 }));
     const stemMat = new THREE.MeshStandardMaterial({ color: '#4a5a2a', roughness: .7 });
     const x0 = -visW / 2 + .9;
-    [[0, 36, 2.6], [1.5, 24, 3.4], [3.3, 13, 2.9], [5.4, 7, 3.2]].forEach(([dx, len, z], si) => {
-      const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(x0 + dx + Math.sin(t * 5 + si * 2) * .7 + t * (si ? .3 : -.2), H + 2.5 - t * len, z + Math.sin(t * 3 + si) * .5)); }
+    [[0, 21, 2.6, -1], [.8, 12, 3.2, -1], [2.0, 5, 2.9, -1], [.1, 10, 2.7, 1], [1.1, 4.5, 3.1, 1]].forEach(([dx, len, z, sg], si) => {
+      const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(sg * (visW / 2 - .9 - dx) + Math.sin(t * 5 + si * 2) * .35 + sg * t * .25, H + 2.5 - t * len, z + Math.sin(t * 3 + si) * .5)); }
       const curve = new THREE.CatmullRomCurve3(pts);
       const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, .075, 5), stemMat); tube.castShadow = true; g.add(tube);
       const n = Math.round(len / 2.3);
       for (let k = 0; k < n; k++) {
         const t = (k + .6) / n, pt = curve.getPoint(Math.min(1, t)), sd = k % 2 ? 1 : -1;
         const leaf = new THREE.Mesh(lg, mats[(k + si) % 3]);
-        const sc = (1.55 + rnd(k, si) * .9) * (1 - t * .3);
+        const sc = (1.15 + rnd(k, si) * .55) * (1 - t * .3);
         leaf.scale.setScalar(sc); leaf.position.copy(pt).add(new THREE.Vector3(sd * .12, 0, .2 + rnd(k, si + 9) * .5));
         leaf.rotation.set(-.25 + rnd(k, si + 3) * .5, sd * (.15 + rnd(k, si + 5) * .5), sd * (.35 + rnd(k, si + 7) * .75));
         leaf.castShadow = leaf.receiveShadow = true; g.add(leaf);
@@ -571,7 +572,7 @@ export async function createShelf3D(el, opts) {
     const W = visW * backScale + 8, BH = H * backScale + 20;
     // back panel
     woodSeed = 0;
-    const bm = woodMaterial(1, 77, 7.5, .62);   // tongue-and-groove back, grain running up
+    const bm = woodMaterial(0, 77, 0, .66);   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
     const aoTex = tex(aoCanvas(), false);
@@ -596,12 +597,13 @@ export async function createShelf3D(el, opts) {
     [-1, 1].forEach(sgn => {
       const post = new THREE.Mesh(new THREE.BoxGeometry(POST, H + 10, DEPTH + 2), boardMat(H, DEPTH, 1));
        
+      post.material.envMapIntensity = .02; post.material.clearcoat = 0; post.material.specularIntensity = .06;
       post.position.set(sgn * (visW / 2 - POST / 2), H / 2, -DEPTH / 2 + .9); post.castShadow = post.receiveShadow = true; caseGroup.add(post);
     });
     // carved buttons in the base
     anchorBoxes.length = 0;
     const carveW = 4.0;
-    [['more', 'book', -1, 0], ['lamp', 'lamp', -1, 1], ['add', 'add', 1, 0]].forEach(([kind, icon, sgn, slot]) => {
+    [].forEach(([kind, icon, sgn, slot]) => {
       const mp = carveMaps(icon, '');
       const nm = new THREE.CanvasTexture(mp.normal); nm.colorSpace = THREE.NoColorSpace;
       const mat = new THREE.MeshStandardMaterial({ map: tex(mp.color), normalMap: nm, normalScale: new THREE.Vector2(1.4, 1.4), transparent: true, roughness: .7, depthWrite: false });
@@ -609,13 +611,13 @@ export async function createShelf3D(el, opts) {
       const q = new THREE.Mesh(new THREE.PlaneGeometry(carveW, ch), mat); q.position.set(cxp, cyp, .32); q.renderOrder = 3; caseGroup.add(q);
       anchorBoxes.push({ kind, mesh: q, x: cxp, y: cyp, w: carveW, h: ch });
     });
-    // the maker's name, carved in the middle of the base
-    {
+    // (the carved name was removed)
+    if (false) {
       const mp = carveMaps('word', 'Bookkeeper');
       const nm = new THREE.CanvasTexture(mp.normal); nm.colorSpace = THREE.NoColorSpace;
-      const mat = new THREE.MeshStandardMaterial({ map: tex(mp.color), normalMap: nm, normalScale: new THREE.Vector2(1.3, 1.3), transparent: true, roughness: .7, depthWrite: false });
-      const ww = Math.min(13, visW - 2 * (1.2 + 1.6 + 2 * carveW + 1.1) - 2), wh = ww * mp.aspect;
-      const q = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); q.position.set(0, PL / 2 + .35, .32); q.renderOrder = 3; caseGroup.add(q);
+      const mat = new THREE.MeshStandardMaterial({ map: tex(mp.color), normalMap: nm, normalScale: new THREE.Vector2(1.3, 1.3), transparent: true, roughness: .42, metalness: .65, depthWrite: false });
+      const ww = Math.min(14, visW * .36), wh = ww * mp.aspect, wide = visW > 70;
+      const q = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); q.position.set(wide ? 0 : -visW / 2 + 1.2 + 1.3 + ww / 2, PL / 2 + .1, .32); q.renderOrder = 3; caseGroup.add(q);
     }
     // plinth
     const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); 
@@ -648,8 +650,8 @@ export async function createShelf3D(el, opts) {
       const pool = new THREE.Mesh(new THREE.PlaneGeometry(visW * backScale, HC), new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .8 }));
       pool.position.set(0, base + HC / 2, -DEPTH + .12); pool.renderOrder = 1; caseGroup.add(pool); lampObjs.push(pool);
       for (let i = 0; i < nL; i++) {
-        const lx = -visW / 2 + (i + .5) * visW / nL;
-        const puck = new THREE.Mesh(new THREE.CylinderGeometry(.75, .75, .22, 20), puckMat); puck.position.set(lx, base + HC - .11, -DEPTH + 4); caseGroup.add(puck);
+        const lx = (-.5 + (i + .5) / nL) * visW * backScale;   // directly above its pool of light on the back panel
+        const puck = new THREE.Mesh(new THREE.CylinderGeometry(.75, .75, .22, 20), puckMat); puck.position.set(lx, base + HC - .11, -DEPTH + 1.3); caseGroup.add(puck);
       }
       for (const sx of [-.27, .27]) { const pl = new THREE.PointLight(0xffc98a, 520, 70, 1.8); pl.position.set(sx * visW, base + HC - 2, -5); caseGroup.add(pl); lampObjs.push(pl); }
     }
@@ -808,7 +810,7 @@ export async function createShelf3D(el, opts) {
       else if (st === 'reading') list.sort((a, b) => (b.started || '').localeCompare(a.started || ''));
       else list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       const g = new THREE.Group(); booksGroup.add(g);
-      const left = -visW / 2 + 1.2 + .35; let x = left; const items = [];
+      const left = -visW / 2 + 1.2 + .35 + (st === 'reading' ? 3.4 : 0); let x = left; const items = [];
       // a small pile lying flat at the end of fuller shelves
       const nStack = st !== 'reading' && list.length >= 6 ? (list.length >= 10 ? 3 : 2) : 0;
       const standing = list.slice(0, list.length - nStack), stacked = list.slice(list.length - nStack);
@@ -841,14 +843,9 @@ export async function createShelf3D(el, opts) {
         fs.renderOrder = 1; g.add(fs);
       }
       const stackW = stacked.length ? Math.max(...stacked.map(b => dimsOf(b).h)) + .8 : 0;
-      // a cast-iron bookend when there is room, otherwise the last book leans
-      if (st !== 'reading' && standing.length && standW + stackW + 3 < visW - 4) {
-        const be = new THREE.Group();
-        const up = new THREE.Mesh(new THREE.BoxGeometry(.28, 13, 8), ironMat), ft = new THREE.Mesh(new THREE.BoxGeometry(3.6, .16, 8), ironMat);
-        geoms.push(up.geometry, ft.geometry); up.position.set(.14, 6.5, 0); ft.position.set(1.8, .08, 0);
-        [up, ft].forEach(m => { m.castShadow = m.receiveShadow = true; be.add(m); });
-        be.position.set(x + .02, base, -1.6 - 4.6); g.add(be); x += 3.9;
-      }
+      // no bookends: when there is room, the last standing book leans on its neighbour
+      const willLean = standing.length > 1 && standW + stackW + 9 < visW - 4;
+      if (willLean && stacked.length) x += sDims[standing.length - 1].h * Math.sin(.2) + .6;
       // the pile
       if (stacked.length) {
         x += .5; let yAcc = 0;
@@ -864,7 +861,7 @@ export async function createShelf3D(el, opts) {
       }
       const contentW = x - left;
       // lean the last book if there is room
-      if (st === 'reading' && standing.length > 1 && contentW < visW - 12) {
+      if (willLean) {
         const p = items[standing.length - 1], m = p.children[0], dims = sDims[standing.length - 1];
         const prev = items[standing.length - 2]; const prevRight = prev.position.x + sDims[standing.length - 2].t;
         const a = .2; m.position.x = -dims.t / 2;

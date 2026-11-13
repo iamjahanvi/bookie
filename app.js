@@ -174,14 +174,15 @@ async function init3d() {
     shelf3d = await m.createShelf3D($('#bc'), { colorsOf, coverSrc: coverSources, onPick: id => openDetail(id), onDismiss: () => closeDetail(), lamps: pref.get('lamps', '0') === '1' });
     shelf3dState = 'ready'; $('#bc').classList.add('ready'); document.body.classList.add('has3d');
     const fab = $('#fab'), more = $('#more'), lamp = $('#lamp');
-    lamp.onclick = () => { const on = pref.get('lamps', '0') !== '1'; pref.set('lamps', on ? '1' : '0'); lamp.setAttribute('aria-pressed', on); shelf3d.setLamps(on) };
+    const dock = document.createElement('nav'); dock.className = 'dock'; dock.setAttribute('aria-label', 'Bookshelf');
+    const sr = t => `<span class="sr">${t}</span>`;
+    lamp.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17h6M10 20h4M8.2 14.2A6 6 0 1 1 15.8 14.2c-.6.6-.8 1.2-.8 1.8H9c0-.6-.2-1.2-.8-1.8z"/></svg>' + sr('Shelf lights');
+    more.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10 5 7 4.6 4 5.2v13c3-.6 6-.2 8 1.3 2-1.5 5-1.9 8-1.3v-13c-3-.6-6-.2-8 1.3zM12 6.5v13"/></svg>' + sr('Lines and stats');
+    fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg>' + sr('Add a book');
+    [lamp, more, fab].forEach(n => { n.className = 'dk' + (n === fab ? ' dk-add' : ''); dock.append(n); });
+    document.body.append(dock);
+    lamp.onclick = () => { const on = pref.get('lamps', '0') !== '1'; pref.set('lamps', on ? '1' : '0'); lamp.setAttribute('aria-pressed', on); shelf3d.setLamps(on); try { navigator.vibrate?.(8) } catch { } };
     lamp.setAttribute('aria-pressed', pref.get('lamps', '0') === '1');
-    [[fab, 'add'], [more, 'more'], [lamp, 'lamp']].forEach(([n, k]) => {
-      n.classList.add('etched');
-      n.addEventListener('pointerdown', () => { shelf3d.press(k, true); try { navigator.vibrate?.(8) } catch { } });
-      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => n.addEventListener(ev, () => shelf3d.press(k, false)));
-    });
-    shelf3d.setAnchors({ add: fab, more, lamp });
   } catch (e) { console.warn('3D bookcase unavailable, using flat shelves', e); shelf3dState = 'failed' }
   hideLoader();
   refresh();
@@ -552,7 +553,7 @@ function shareSheet(b, q) {
 
 /* ---------- sign in ---------- */
 function renderGate() {
-  S.mode = 'gate'; $('#fab').hidden = true; hideLoader(); document.body.classList.remove('home-on');
+  S.mode = 'gate'; if ($('#fab')) $('#fab').hidden = true; $('.dock')?.remove(); hideLoader(); document.body.classList.remove('home-on');
   const spines = [[34, 110, '#8c2f39'], [46, 120, '#2f4858'], [28, 96, '#c9a227'], [40, 114, '#3c6e47'], [52, 104, '#e6d3ad'], [32, 118, '#4a3f6b']];
   $('#app').innerHTML = `<div class="gate">
     <div class="case" style="width:auto;margin:0 -24px"><div class="mini-shelf" style="padding:0 24px">${spines.map(([w, h, c]) => `<span style="width:${w}px;height:${h}px;background:${c}"></span>`).join('')}</div><div class="plank"><i class="top"></i><i class="front"></i></div></div>
