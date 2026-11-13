@@ -421,13 +421,14 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col *= 1. - fine * .1;
   col = mix(col, cL * .6, pore * .5);
   col *= mix(.18, 1., seam) * uTone;
-  hgt = -late * .22 - pore * .8 + fibre * .1 - (1. - seam) * 2.5;
-  rgh = .46 + late * .08 + pore * .22 - (fibre - .5) * .08 + (streak - .5) * .08;
+  hgt = -late * .18 - pore * .22 + fibre * .06 - (1. - seam) * 2.5;
+  rgh = .34 + late * .06 + pore * .12 - (fibre - .5) * .05 + (streak - .5) * .06;
 }
 `;
+let WOOD_ENV = null;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .5, metalness: 0, envMapIntensity: .13, specularIntensity: .5, specularColor: new THREE.Color('#ffcf9a'), clearcoat: .1, clearcoatRoughness: .3, sheen: 0 });
-  m.envMapIntensity = .02;
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .4, metalness: 0, specularIntensity: .6, specularColor: new THREE.Color('#ffcf9a'), clearcoat: .45, clearcoatRoughness: .22 });
+  m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
     sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
@@ -438,7 +439,7 @@ function woodMaterial(axis, seed, plank = 0, tone = 1) {
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 wdx = dFdx(-vViewPosition), wdy = dFdy(-vViewPosition); float hx = dFdx(wH), hy = dFdy(wH);
     vec3 r1 = cross(wdy, normal), r2 = cross(normal, wdx); float det = dot(wdx, r1);
-    normal = normalize(abs(det) * normal - .07 * sign(det) * (hx * r1 + hy * r2)); }`);
+    normal = normalize(abs(det) * normal - .04 * sign(det) * (hx * r1 + hy * r2)); }`);
   };
   m.customProgramCacheKey = () => 'bookie-wood';
   return m;
@@ -460,6 +461,13 @@ export async function createShelf3D(el, opts) {
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#3a2414');
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  { // a warm, dim room for the varnish to mirror: lamp glow overhead, amber at eye level, dark floor
+    const c = cnv(64, 128), x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, '#ffdca8'); g.addColorStop(.22, '#e0a45e'); g.addColorStop(.46, '#9a6230'); g.addColorStop(.56, '#6a3f1c'); g.addColorStop(.75, '#2a170a'); g.addColorStop(1, '#120a04');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 128);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
+    WOOD_ENV = pmrem.fromEquirectangular(t).texture; t.dispose();
+  }
   scene.environmentIntensity = 0.45;
   // real light captured in an apartment (CC0, Poly Haven via pmndrs/assets)
   const envReady = new Promise(res => new EXRLoader().load(new URL('./assets/apartment.exr', import.meta.url).href, t => {
@@ -542,16 +550,16 @@ export async function createShelf3D(el, opts) {
     const mats = ['#ffffff', '#d9efc0', '#b8d69a'].map(c => new THREE.MeshStandardMaterial({ map: lt, color: c, side: THREE.DoubleSide, roughness: .5 }));
     const stemMat = new THREE.MeshStandardMaterial({ color: '#4a5a2a', roughness: .7 });
     const x0 = -visW / 2 + .9;
-    [[0, 21, 2.6, -1], [.8, 12, 3.2, -1], [2.0, 5, 2.9, -1], [.1, 10, 2.7, 1], [1.1, 4.5, 3.1, 1]].forEach(([dx, len, z, sg], si) => {
-      const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(sg * (visW / 2 - .9 - dx) + Math.sin(t * 5 + si * 2) * .35 + sg * t * .25, H + 2.5 - t * len, z + Math.sin(t * 3 + si) * .5)); }
+    [[0, 23, 2.4, -1], [.3, 13, 2.9, -1], [.5, 6, 2.6, -1], [.1, 10, 2.5, 1], [.4, 4.5, 2.9, 1]].forEach(([dx, len, z, sg], si) => {
+      const pts = []; for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(sg * (visW / 2 - .45 - dx) + Math.sin(t * 5 + si * 2) * .16 + sg * t * .1, H + 2.5 - t * len, z + Math.sin(t * 3 + si) * .5)); }
       const curve = new THREE.CatmullRomCurve3(pts);
       const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, .075, 5), stemMat); tube.castShadow = true; g.add(tube);
-      const n = Math.round(len / 2.3);
+      const n = Math.round(len / 1.5);
       for (let k = 0; k < n; k++) {
         const t = (k + .6) / n, pt = curve.getPoint(Math.min(1, t)), sd = k % 2 ? 1 : -1;
         const leaf = new THREE.Mesh(lg, mats[(k + si) % 3]);
-        const sc = (1.15 + rnd(k, si) * .55) * (1 - t * .3);
-        leaf.scale.setScalar(sc); leaf.position.copy(pt).add(new THREE.Vector3(sd * .12, 0, .2 + rnd(k, si + 9) * .5));
+        const sc = (.62 + rnd(k, si) * .36) * (1 - t * .25);
+        leaf.scale.setScalar(sc); leaf.position.copy(pt).add(new THREE.Vector3(sd * .1 + sg * .28, 0, .2 + rnd(k, si + 9) * .5));
         leaf.rotation.set(-.25 + rnd(k, si + 3) * .5, sd * (.15 + rnd(k, si + 5) * .5), sd * (.35 + rnd(k, si + 7) * .75));
         leaf.castShadow = leaf.receiveShadow = true; g.add(leaf);
       }
@@ -597,7 +605,7 @@ export async function createShelf3D(el, opts) {
     [-1, 1].forEach(sgn => {
       const post = new THREE.Mesh(new THREE.BoxGeometry(POST, H + 10, DEPTH + 2), boardMat(H, DEPTH, 1));
        
-      post.material.envMapIntensity = .02; post.material.clearcoat = 0; post.material.specularIntensity = .06;
+      post.material.envMapIntensity = .35; post.material.clearcoat = .2;
       post.position.set(sgn * (visW / 2 - POST / 2), H / 2, -DEPTH / 2 + .9); post.castShadow = post.receiveShadow = true; caseGroup.add(post);
     });
     // carved buttons in the base
@@ -797,6 +805,7 @@ export async function createShelf3D(el, opts) {
       add(new THREE.BoxGeometry(t, h, CT), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
     }
     g.userData.book = b; g.userData.col = col; g.userData.boardMat = board; g.userData.dims = dims;
+    showCover(g, true);   // the real front cover is always on the front board
     return g;
   }
   function buildBooks() {
@@ -810,7 +819,7 @@ export async function createShelf3D(el, opts) {
       else if (st === 'reading') list.sort((a, b) => (b.started || '').localeCompare(a.started || ''));
       else list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       const g = new THREE.Group(); booksGroup.add(g);
-      const left = -visW / 2 + 1.2 + .35 + (st === 'reading' ? 3.4 : 0); let x = left; const items = [];
+      const left = -visW / 2 + 1.2 + .35 + 0; let x = left; const items = [];
       // a small pile lying flat at the end of fuller shelves
       const nStack = st !== 'reading' && list.length >= 6 ? (list.length >= 10 ? 3 : 2) : 0;
       const standing = list.slice(0, list.length - nStack), stacked = list.slice(list.length - nStack);
@@ -916,7 +925,7 @@ export async function createShelf3D(el, opts) {
     if (on) {
       if (!m.userData.coverMat) m.userData.coverMat = new THREE.MeshStandardMaterial({ map: coverTex(m.userData.book, m.userData.col), roughness: .55 });
       fb.material = fb.material.slice(); fb.material[0] = m.userData.coverMat;
-    } else { fb.material = fb.material.slice(); fb.material[0] = m.userData.boardMat; }
+    }   // the cover stays on the book when it goes back
     (m.userData.aos || []).forEach(q => q.visible = !on);
   }
   const dim = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshBasicMaterial({ color: 0x0a0603, transparent: true, opacity: 0, depthWrite: false }));
