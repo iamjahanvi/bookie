@@ -854,7 +854,7 @@ export async function createShelf3D(el, opts) {
       g.userData.front_z = d / 2;
       add(new THREE.BoxGeometry(t, h, CT), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
     }
-    if ((b.status || 'reading') === 'reading') {
+    if (false) {   // bookmark ribbons removed
       const hv2 = hashStr(b.id + 'r'), rc = ['#a3202c', '#c9a227', '#1f4e79', '#2f6b4a'][hv2 % 4];
       const rm = new THREE.MeshStandardMaterial({ color: rc, roughness: .75, side: THREE.DoubleSide });
       const rw = Math.min(.34, dims.t * .45), rx = (((hv2 >>> 3) % 5) - 2) * dims.t * .07, drop = 1.15 + ((hv2 >>> 6) % 5) * .1, zf = dims.d / 2 + .06;
