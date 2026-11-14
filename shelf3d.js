@@ -278,7 +278,7 @@ function speckle(x, w, h, seed, amt = 1) {
   for (let i = 0; i < w * h / 7; i++) { const a = hh(i, 3); x.fillStyle = a > .5 ? `rgba(255,255,255,${(a - .5) * .06 * amt})` : `rgba(0,0,0,${a * .07 * amt})`; x.fillRect(hh(i, 1) * w, hh(i, 2) * h, 1.3, 1.3); }
 }
 function spineCanvas(b, dims, col) {
-  const w = Math.max(48, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
+  const w = Math.max(20, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
   const c = cnv(w, h), x = c.getContext('2d'), hv = hashStr(b.id);
   x.fillStyle = col.bg; x.fillRect(0, 0, w, h);
   speckle(x, w, h, hv);
@@ -705,9 +705,10 @@ export async function createShelf3D(el, opts) {
     // format: mass-market paperback, trade paperback, hardback, tall art/large-format
     const f = r(3); const base = f < .2 ? 18.2 : f < .62 ? 20.4 : f < .9 ? 22.4 : 23.6;
     const ht = Math.min(HC - 1.1, base + (r(7) - .5) * 1.2);
-    const pages = b.pages || (140 + Math.round(r(11) * 420));
-    const paper = f < .2 ? .0058 : .0068;                     // thicker stock on hardbacks
-    const t = Math.max(1.6, Math.min(7.2, (.35 + pages * paper + (f >= .62 ? .5 : 0)) * 1.3));
+    // true to life: one unit is about a centimetre, so thickness follows the real page count
+    const pages = +b.pages > 0 ? +b.pages : 300;
+    const paper = f < .2 ? .0056 : .0064;                     // cm per page; bulkier stock outside mass-market
+    const t = Math.max(.55, Math.min(8, pages * paper + (f >= .62 ? .55 : .1)));
     return { h: ht, t, d: ht * (f < .2 ? .62 : .67), hard: f >= .62 };
   }
   // ---- real images: covers from Open Library etc., spines from the cover or a photo ----
@@ -742,7 +743,7 @@ export async function createShelf3D(el, opts) {
     x.fillStyle = e; x.fillRect(0, 0, w, h);
   }
   function spineFromPhoto(dims, img) {
-    const w = Math.max(48, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
+    const w = Math.max(20, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
     const c = cnv(w, h), x = c.getContext('2d');
     // the photo may be landscape or portrait — rotate so the long side runs down the spine
     const land = img.naturalWidth > img.naturalHeight;
@@ -760,7 +761,7 @@ export async function createShelf3D(el, opts) {
   }
   const rgbStr = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
   function spineFromCover(b, dims, col, img) {
-    const w = Math.max(48, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
+    const w = Math.max(20, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
     const c = cnv(w, h), x = c.getContext('2d');
     const { edge, mid } = coverColours(img);
     x.fillStyle = rgbStr(edge); x.fillRect(0, 0, w, h);
