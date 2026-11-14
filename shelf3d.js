@@ -156,7 +156,7 @@ function rgbOf(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 25
 function shade(hex, k) { return '#' + rgbOf(hex).map(v => Math.max(0, Math.min(255, Math.round(v * k))).toString(16).padStart(2, '0')).join(''); }
 function hashStr(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 
-const PPU = 36; // texture pixels per world unit
+const PPU = 52; // texture pixels per world unit (sharper small titles)
 const FONTS = {
   serif: w => `600 ${w}px Fraunces, Georgia, serif`,
   serifIt: w => `italic 500 ${w}px "Playfair Display", Fraunces, Georgia, serif`,
@@ -245,6 +245,7 @@ function hinges(x, w, h) {
   }
 }
 function wear(x, w, h, b, dims) {
+  return;   // books keep their original colours: no fading, rubbing or creases
   const hv = hashStr(b.id + 'w'), st = b.status || 'reading', r = n => ((hv >>> n) & 255) / 255, nz = hash2(hv % 997);
   // head and tail rubbed pale from being pulled off the shelf
   for (const top of [true, false]) {
@@ -703,8 +704,11 @@ export async function createShelf3D(el, opts) {
   function dimsOf(b) {
     const h = hashStr(b.id), r = n => ((h >>> n) & 1023) / 1023;
     // format: mass-market paperback, trade paperback, hardback, tall art/large-format
-    const f = r(3); const base = f < .2 ? 18.2 : f < .62 ? 20.4 : f < .9 ? 22.4 : 23.6;
-    const ht = Math.min(HC - 1.1, base + (r(7) - .5) * 1.2);
+    let f = r(3);
+    if (b.format === 'hard') f = .62 + r(3) * .38; else if (b.format === 'paper') f = r(3) * .62;
+    const base = f < .2 ? 18.2 : f < .62 ? 20.4 : f < .9 ? 22.4 : 23.6;
+    const real = +b.heightCm >= 10 && +b.heightCm <= 40 ? Math.max(15, +b.heightCm) : 0;   // one unit is about a centimetre
+    const ht = Math.min(HC - 1.1, real || base + (r(7) - .5) * 1.2);
     // true to life: one unit is about a centimetre, so thickness follows the real page count
     const pages = +b.pages > 0 ? +b.pages : 300;
     const paper = f < .2 ? .0056 : .0064;                     // cm per page; bulkier stock outside mass-market
@@ -775,13 +779,27 @@ export async function createShelf3D(el, opts) {
     if (dims.hard) hinges(x, w, h);
     spineShading(x, w, h); return c;
   }
+  function spineFromDesign(b, dims, d) {
+    const w = Math.max(20, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
+    const c = cnv(w, h), x = c.getContext('2d');
+    x.fillStyle = d.bg; x.fillRect(0, 0, w, h);
+    speckle(x, w, h, hashStr(b.id), .6);
+    let st = STYLES.includes(d.style) ? d.style : styleOf(b, w); if (st === 'stack' && w < 3.1 * PPU) st = 'cond';
+    typeSpine(x, w, h, b, st, d.ink, d.accent);
+    if (dims.hard) hinges(x, w, h);
+    spineShading(x, w, h); return c;
+  }
+  const hexOK = v => /^#[0-9a-f]{6}$/i.test(v || '');
+  const designOf = b => (b.spine && hexOK(b.spine.bg) && hexOK(b.spine.ink) && hexOK(b.spine.accent)) ? b.spine : null;
   function spineTex(b, dims, col) {
-    const k = [b.id, b.title, b.author, col.bg, col.acc, b.coverUrl || '', b.spineUrl || '', dims.t.toFixed(2), dims.h.toFixed(2)].join('|');
+    const k = [b.id, b.title, b.author, col.bg, col.acc, b.coverUrl || '', b.spineUrl || '', JSON.stringify(b.spine || ''), dims.t.toFixed(2), dims.h.toFixed(2)].join('|');
     if (texCache.has(k)) return texCache.get(k);
     const t = tex(spineCanvas(b, dims, col)); texCache.set(k, t);
     (async () => {
       const sp = await loadImage(b.spineUrl);
       if (sp) { t.image = spineFromPhoto(dims, sp); t.dispose(); t.needsUpdate = true; needs = true; return; }
+      const dz = designOf(b);
+      if (dz) { t.image = spineFromDesign(b, dims, dz); t.dispose(); t.needsUpdate = true; needs = true; return; }
       const cv = await loadImage(b.coverUrl);
       if (cv) { try { t.image = spineFromCover(b, dims, col, cv); t.dispose(); t.needsUpdate = true; needs = true; } catch { /* image not readable */ } }
     })();
@@ -811,7 +829,7 @@ export async function createShelf3D(el, opts) {
     // the sides take the colour of the cover's edge once the real cover arrives
     if (b.coverUrl && !b.spineUrl) loadImage(b.coverUrl).then(img => {
       if (!img) return;
-      try { const e = coverColours(img).edge; const k = new THREE.Color(rgbStr(e)); k.convertSRGBToLinear(); board.color.copy(k).multiplyScalar(.95); boardEdge.color.copy(k).multiplyScalar(.9); needs = true; } catch { }
+      try { const dz = designOf(b); const e = coverColours(img).edge; const k = new THREE.Color(dz ? dz.bg : rgbStr(e)); k.convertSRGBToLinear(); board.color.copy(k).multiplyScalar(.95); boardEdge.color.copy(k).multiplyScalar(.9); needs = true; } catch { }
     });
     const g = new THREE.Group(); g.userData.id = b.id;
     const add = (geo, mats, x, y, z) => { geoms.push(geo); const m = new THREE.Mesh(geo, mats); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; m.userData.id = b.id; g.add(m); return m; };
@@ -835,6 +853,14 @@ export async function createShelf3D(el, opts) {
       for (const sgn of [-1, 1]) { const bm = add(new THREE.BoxGeometry(CT, h, d), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - CT / 2), 0, 0); if (sgn > 0) g.userData.front = bm; }
       g.userData.front_z = d / 2;
       add(new THREE.BoxGeometry(t, h, CT), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
+    }
+    if ((b.status || 'reading') === 'reading') {
+      const hv2 = hashStr(b.id + 'r'), rc = ['#a3202c', '#c9a227', '#1f4e79', '#2f6b4a'][hv2 % 4];
+      const rm = new THREE.MeshStandardMaterial({ color: rc, roughness: .75, side: THREE.DoubleSide });
+      const rw = Math.min(.34, dims.t * .45), rx = (((hv2 >>> 3) % 5) - 2) * dims.t * .07, drop = 1.15 + ((hv2 >>> 6) % 5) * .1, zf = dims.d / 2 + .06;
+      const hang = new THREE.Mesh(new THREE.PlaneGeometry(rw, drop), rm); hang.position.set(rx, dims.h / 2 - drop / 2 + .03, zf);
+      const over = new THREE.Mesh(new THREE.PlaneGeometry(rw, 1.6), rm); over.rotation.x = -Math.PI / 2; over.position.set(rx, dims.h / 2 + .03, zf - .8);
+      geoms.push(hang.geometry, over.geometry); g.add(hang, over);
     }
     g.userData.book = b; g.userData.col = col; g.userData.boardMat = board; g.userData.dims = dims;
     showCover(g, true);   // the real front cover is always on the front board

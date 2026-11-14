@@ -85,6 +85,24 @@ function queueWrite(id) {
     running[id] = false;
   })();
 }
+// Ask Claude (on the server) to design each spine from its real cover, once per book.
+const spineTried = new Set(); let spineBusy = false;
+async function designSpines() {
+  if (spineBusy || !S.cfg?.spine) return; spineBusy = true;
+  try {
+    for (;;) {
+      const b = [...S.books.values()].find(b => /^https:\/\//.test(b.coverUrl || '') && !b.spineUrl && !b.spine && !spineTried.has(b.id + b.coverUrl));
+      if (!b) break; spineTried.add(b.id + b.coverUrl);
+      const headers = { 'Content-Type': 'application/json' };
+      if (S.mode === 'cloud') { const { data: { session } } = await S.sb.auth.getSession(); if (session) headers.Authorization = 'Bearer ' + session.access_token }
+      const r = await fetch('api/spine', { method: 'POST', headers, body: JSON.stringify({ cover: b.coverUrl, title: b.title, author: b.author }) });
+      if (r.status === 429 || r.status >= 500 || r.status === 401) break;
+      if (!r.ok) continue;
+      const d = await r.json(), cur = S.books.get(b.id);
+      if (cur && cur.coverUrl === b.coverUrl && d && d.bg) { const nb = clone(cur); nb.spine = d; saveBook(nb) }
+    }
+  } catch { } finally { spineBusy = false }
+}
 function saveBook(b) { b.updatedAt = Date.now(); S.books.set(b.id, b); queueWrite(b.id); refresh() }
 function deleteBook(id) { S.books.delete(id); queueWrite(id); refresh() }
 async function pull() {
@@ -315,10 +333,16 @@ async function searchBooks(q, signal) {
   // books with covers first
   return out.sort((a, b) => (!!b.cover) - (!!a.cover)).slice(0, 14);
 }
+const edMeta = new Map();   // cover id -> what that edition physically is
 async function editionCovers(workKey, signal) {
   const r = await fetch(`https://openlibrary.org${workKey}/editions.json?limit=60`, { signal });
   const j = await r.json(); const ids = [];
-  for (const e of j.entries || []) for (const c of (e.covers || [])) if (c > 0 && !ids.includes(c)) ids.push(c);
+  for (const e of j.entries || []) {
+    const fmt = /hard|cloth|library binding/i.test(e.physical_format || '') ? 'hard' : /paper|soft|mass/i.test(e.physical_format || '') ? 'paper' : null;
+    let cm = null; const dm = String(e.physical_dimensions || ''), nums = (dm.match(/[\d.]+/g) || []).map(Number).filter(n => n > 0);
+    if (nums.length) { cm = Math.max(...nums) * (/inch/i.test(dm) ? 2.54 : /mm|millim/i.test(dm) ? .1 : 1); if (cm < 10 || cm > 40) cm = null; }
+    for (const c of (e.covers || [])) if (c > 0) { if (!ids.includes(c)) ids.push(c); if (!edMeta.has(c)) edMeta.set(c, { format: fmt, heightCm: cm ? Math.round(cm * 10) / 10 : null, pages: e.number_of_pages || null }); }
+  }
   return ids.slice(0, 18);
 }
 async function workBlurb(workKey, signal) {
@@ -368,11 +392,16 @@ function bookSheet(existing) {
       try { pal = await coverPalette(url); if (pal[0]) { b.color = pal[0]; b.accent = pickAccent(pal[0], pal) } } catch { pal = [] }
       if (!isOwn) ownCover = null; drawPrev();
     };
+    const applyEd = cid => {
+      const m = edMeta.get(cid); delete b.format; delete b.heightCm; delete b.spine; if (!m) return;
+      if (m.format) b.format = m.format; if (m.heightCm) b.heightCm = m.heightCm;
+      if (m.pages) $('#f-pages', body).value = m.pages;
+    };
     const drawEditions = (ids = []) => {
       const eds = $('#f-eds', body);
       eds.innerHTML = ids.map(id => `<button type="button" class="ed ${b.coverUrl === olCover(id) ? 'on' : ''}" data-cid="${id}"><img src="${olCover(id, 'M')}" alt="" loading="lazy" onerror="this.parentNode.remove()"></button>`).join('')
         + `<label class="ed up">Your<br>photo<input type="file" accept="image/*" id="f-own"></label>`;
-      $$('.ed[data-cid]', eds).forEach(x => x.onclick = () => { $$('.ed', eds).forEach(y => y.classList.toggle('on', y === x)); setCover(olCover(+x.dataset.cid)) });
+      $$('.ed[data-cid]', eds).forEach(x => x.onclick = () => { $$('.ed', eds).forEach(y => y.classList.toggle('on', y === x)); applyEd(+x.dataset.cid); setCover(olCover(+x.dataset.cid)) });
       $('#f-own', eds).onchange = async e => {
         const f = e.target.files[0]; if (!f) return;
         ownCover = await compress(f, 1000, .88); const u = URL.createObjectURL(ownCover);
@@ -390,7 +419,7 @@ function bookSheet(existing) {
       try {
         const [ids, blurb] = await Promise.all([editionCovers(r.key, ctl.signal), workBlurb(r.key, ctl.signal)]);
         if (r.coverId && !ids.includes(r.coverId)) ids.unshift(r.coverId);
-        drawEditions(ids); setVal('f-blurb', blurb);
+        drawEditions(ids); setVal('f-blurb', blurb); if (r.coverId) applyEd(r.coverId);
         $('#f-hint', body).textContent = ids.length > 1 ? `${ids.length} covers — tap the edition you own.` : '';
       } catch (e) { if (e.name !== 'AbortError') $('#f-hint', body).textContent = '' }
     };
@@ -424,7 +453,7 @@ function bookSheet(existing) {
       if (b.coverUrl && b.coverUrl.startsWith('blob:')) delete b.coverUrl;
       if (b.status === 'finished' && !b.finished) b.finished = today();
       if (!b.accent) delete b.accent;
-      saveBook(b); close();
+      saveBook(b); close(); designSpines();
       if (!existing) { toast('Shelved.'); setTimeout(() => openDetail(b.id), 250) }
     };
     if (!existing) setTimeout(() => $('#f-q', body).focus(), 350);
@@ -575,7 +604,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { const w = 
 
 async function startCloud(session) {
   S.user = session.user; S.mode = 'cloud'; loadCache(); refresh();
-  await pull(); subscribe();
+  await pull(); subscribe(); designSpines();
 }
 (async () => {
   const demo = new URLSearchParams(location.search).has('demo');
@@ -583,7 +612,7 @@ async function startCloud(session) {
   if (!S.cfg?.supabaseUrl) {
     S.mode = 'local'; loadCache();
     S.note = demo ? 'Demo mode — saving in this browser only.' : 'Preview — saving in this browser only. Sign-in and sync arrive with the Vercel version.';
-    refresh(); return;
+    refresh(); designSpines(); return;
   }
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
   S.sb = createClient(S.cfg.supabaseUrl, S.cfg.supabaseAnonKey, { auth: { persistSession: true, detectSessionInUrl: true } });
