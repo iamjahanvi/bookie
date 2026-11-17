@@ -251,7 +251,7 @@ textarea.inp{border:1px solid var(--rule);background:var(--card);padding:12px;fo
 .seg.mini{width:150px}.seg.mini button{font-size:13px;padding:5px 4px}
 .bookcase3d{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-top:8px;
   height:calc(100vh - 66px - var(--safe-t));height:calc(100svh - 66px - var(--safe-t));min-height:460px;
-  background:#5a3820;touch-action:pan-y;overflow:hidden;
+  background:#a8763f;touch-action:pan-y;overflow:hidden;
   -webkit-user-select:none;user-select:none}
 .bookcase3d canvas{display:block;width:100%!important;height:100%!important;opacity:0;transition:opacity .6s}
 .bookcase3d.ready canvas{opacity:1}
@@ -283,7 +283,7 @@ body.home-on .bookcase3d.flat{overflow-y:auto;background:var(--paper);padding:ca
 .fab.etched:focus-visible,.morebtn.etched:focus-visible{outline:2px solid rgba(230,200,140,.8);outline-offset:2px}
 
 /* ---------- loading screen ---------- */
-#loader{position:fixed;inset:0;z-index:100;background:#2b1a0e;display:flex;flex-direction:column;align-items:center;justify-content:center;
+#loader{position:fixed;inset:0;z-index:100;background:#a8763f;display:flex;flex-direction:column;align-items:center;justify-content:center;
   transition:opacity .5s ease,visibility 0s linear .5s}
 #loader.gone{opacity:0;visibility:hidden;pointer-events:none}
 .ld-books{display:flex;align-items:flex-end;gap:3px;height:74px}
@@ -295,7 +295,7 @@ body.home-on .bookcase3d.flat{overflow-y:auto;background:var(--paper);padding:ca
 .ld-books i:nth-child(5){height:54px;background:#2f4858;width:11px;animation-delay:.48s}
 @keyframes ld{0%{transform:translateY(-26px);opacity:0}22%{transform:translateY(0);opacity:1}26%{transform:translateY(-3px)}30%,78%{transform:translateY(0);opacity:1}100%{transform:translateY(0);opacity:0}}
 .ld-plank{width:108px;height:7px;border-radius:1px;background:linear-gradient(#8a5a31,#5a3820)}
-#loader p{margin:22px 24px 0;color:#d9c3a3;font-style:italic;font-size:16px;text-align:center}
+#loader p{margin:22px 24px 0;color:#fbf1e2;font-style:italic;font-size:16px;text-align:center}
 @media (prefers-reduced-motion:reduce){.ld-books i{animation:none}}
 
 /* ---------- book page as a sheet under the lifted book ---------- */
@@ -307,7 +307,7 @@ body.has3d .detail .dbar{padding-top:16px;border-radius:22px 22px 0 0}
 body.has3d .detail .hero{display:block;text-align:center;margin-top:-34px;padding:0 52px}
 body.has3d .detail .hero .cover{display:none}
 body.has3d .detail .blurb{text-align:center}
-body.home-on{background:#2b1a0e}
+body.home-on{background:#a8763f}
 
 /* light falls off toward the edges and the floor, as in a photograph */
 .bookcase3d:not(.flat):after{content:"";position:absolute;inset:0;pointer-events:none;

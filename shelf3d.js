@@ -413,7 +413,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   float fine = wn(vec3(p.x * 1.8, p.yz * 26.));
   float pore = smoothstep(.83, .92, wn(vec3(p.x * 1.4, p.yz * 24.))) * (1. - .6 * late);   // open pores, drawn out along the grain
   float streak = wfbm(vec3(p.x * .01, p.yz * .3));               // long heartwood streaks
-  vec3 cE = vec3(.150, .074, .034), cL = vec3(.050, .023, .011), cW = vec3(.215, .110, .050), cG = vec3(.080, .048, .030);
+  vec3 cE = vec3(.43, .27, .135), cL = vec3(.31, .185, .085), cW = vec3(.52, .35, .18), cG = vec3(.36, .26, .16);
   col = mix(cE, cL, late * (.26 + .3 * yr));
   col *= .9 + yr * .2;
   col = mix(col, cG, smoothstep(.5, .8, streak) * .4);
@@ -459,12 +459,12 @@ export async function createShelf3D(el, opts) {
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   el.appendChild(renderer.domElement);
 
-  const scene = new THREE.Scene(); scene.background = new THREE.Color('#3a2414');
+  const scene = new THREE.Scene(); scene.background = new THREE.Color('#a8763f');
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   { // a warm, dim room for the varnish to mirror: lamp glow overhead, amber at eye level, dark floor
     const c = cnv(64, 128), x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 128);
-    g.addColorStop(0, '#ffdca8'); g.addColorStop(.22, '#e0a45e'); g.addColorStop(.46, '#9a6230'); g.addColorStop(.56, '#6a3f1c'); g.addColorStop(.75, '#2a170a'); g.addColorStop(1, '#120a04');
+    g.addColorStop(0, '#fff0dc'); g.addColorStop(.22, '#e8c9a0'); g.addColorStop(.46, '#b8946c'); g.addColorStop(.56, '#8a6a4a'); g.addColorStop(.75, '#2a170a'); g.addColorStop(1, '#120a04');
     x.fillStyle = g; x.fillRect(0, 0, 64, 128);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
     WOOD_ENV = pmrem.fromEquirectangular(t).texture; t.dispose();
@@ -480,7 +480,7 @@ export async function createShelf3D(el, opts) {
   const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 2000);
 
   const hemi = new THREE.HemisphereLight(0xfff4e4, 0x6b4a2c, 0.12); scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xffc98c, 3.0); key.castShadow = true;
+  const key = new THREE.DirectionalLight(0xffe4c4, 2.7); key.castShadow = true;
   key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 16;
   scene.add(key, key.target);
   const fill = new THREE.DirectionalLight(0xffd6a2, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
@@ -613,7 +613,7 @@ export async function createShelf3D(el, opts) {
     const W = visW * backScale + 8, BH = H * backScale + 20;
     // back panel
     woodSeed = 0;
-    const bm = woodMaterial(0, 77, 0, .66);   // tongue-and-groove back, grain running up
+    const bm = woodMaterial(0, 77, 0, .84);   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
     const aoTex = tex(aoCanvas(), false);
