@@ -3,6 +3,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+// a box with softly rounded edges; keeps per-face materials
+const RBox = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 3, Math.max(.004, Math.min(r, w / 2 - .001, h / 2 - .001, d / 2 - .001)));
 
 const BT = 2.0;      // board thickness
 const HC = 25;       // clear height of a compartment
@@ -138,7 +142,7 @@ function clothCanvas(seed = 3) {
 }
 function aoCanvas() {
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
-  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(40,20,5,.55)'); g.addColorStop(.12, 'rgba(40,20,5,.2)'); g.addColorStop(.4, 'rgba(0,0,0,0)'); g.addColorStop(.92, 'rgba(0,0,0,.04)'); g.addColorStop(1, 'rgba(40,20,5,.22)');
+  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(40,20,5,.5)'); g.addColorStop(.1, 'rgba(40,20,5,.2)'); g.addColorStop(.32, 'rgba(0,0,0,0)'); g.addColorStop(.6, 'rgba(30,15,5,.04)'); g.addColorStop(.9, 'rgba(30,15,5,.14)'); g.addColorStop(1, 'rgba(30,15,5,.26)');
   x.fillStyle = g; x.fillRect(0, 0, w, h);
   g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(30,15,5,.45)'); g.addColorStop(.07, 'rgba(30,15,5,.12)'); g.addColorStop(.18, 'rgba(0,0,0,0)'); g.addColorStop(.82, 'rgba(0,0,0,0)'); g.addColorStop(.93, 'rgba(30,15,5,.12)'); g.addColorStop(1, 'rgba(30,15,5,.45)');
   x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
@@ -275,6 +279,7 @@ function textOnHex(hex) { const [r, g, b] = rgbOf(hex); return (0.2126 * r + 0.7
 const STYLES = ['classic', 'cond', 'block', 'quiet', 'heavy', 'stack'];
 function styleOf(b, w) { const hv = hashStr(b.id + 's'); let s = STYLES[hv % STYLES.length]; if (s === 'stack' && w < 3.1 * PPU) s = 'cond'; return s; }
 function speckle(x, w, h, seed, amt = 1) {
+  amt *= .35;
   const hh = hash2(seed % 1000);
   for (let i = 0; i < w * h / 7; i++) { const a = hh(i, 3); x.fillStyle = a > .5 ? `rgba(255,255,255,${(a - .5) * .06 * amt})` : `rgba(0,0,0,${a * .07 * amt})`; x.fillRect(hh(i, 1) * w, hh(i, 2) * h, 1.3, 1.3); }
 }
@@ -456,7 +461,7 @@ export async function createShelf3D(el, opts) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
   el.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#a8763f');
@@ -481,8 +486,10 @@ export async function createShelf3D(el, opts) {
 
   const hemi = new THREE.HemisphereLight(0xfff4e4, 0x6b4a2c, 0.12); scene.add(hemi);
   const key = new THREE.DirectionalLight(0xffe4c4, 2.7); key.castShadow = true;
-  key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 16;
+  key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 11; key.shadow.blurSamples = 16;
   scene.add(key, key.target);
+  RectAreaLightUniformsLib.init();
+  const bounces = [];
   const fill = new THREE.DirectionalLight(0xffd6a2, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
   const rake = new THREE.DirectionalLight(0xffd6a2, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
 
@@ -499,6 +506,10 @@ export async function createShelf3D(el, opts) {
     g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.4, 'rgba(0,0,0,.3)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 2, 64);
     return new THREE.CanvasTexture(c); })();
   const floorAOMat = new THREE.MeshBasicMaterial({ map: vGradTex, transparent: true, opacity: .16, depthWrite: false });
+  const contactTex = (() => { const c = cnv(128, 128), x = c.getContext('2d');
+    x.filter = 'blur(10px)'; x.fillStyle = '#000'; x.fillRect(26, 26, 76, 76);
+    const t = new THREE.CanvasTexture(c); return t; })();
+  const contactMat = new THREE.MeshBasicMaterial({ map: contactTex, color: 0x1a0d04, transparent: true, opacity: .55, depthWrite: false });
   const ironMat = new THREE.MeshStandardMaterial({ color: '#2a2622', metalness: .7, roughness: .42 });
   const brassEdge = new THREE.MeshStandardMaterial({ color: '#b48c42', metalness: 1, roughness: .38 });
   const spineNormal = new THREE.CanvasTexture(spineNormalCanvas()); spineNormal.colorSpace = THREE.NoColorSpace; spineNormal.wrapT = THREE.RepeatWrapping;
@@ -508,13 +519,39 @@ export async function createShelf3D(el, opts) {
   const texCache = new Map(), coverCache = new Map(), tweens = [];
   const geoms = [];
 
+  const camBase = new THREE.Vector3(), tilt = { x: 0, y: 0, tx: 0, ty: 0 };
+  function aimCamera() {
+    camera.position.set(camBase.x + tilt.x * 1.5, camBase.y + tilt.y * 1.1, camBase.z);
+    camera.lookAt(camBase.x + tilt.x * .35, camBase.y + tilt.y * .25, 0);
+  }
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduced) {
+    let b0 = null, g0 = null;
+    const onOri = e => {
+      if (e.beta == null || e.gamma == null) return;
+      if (b0 === null) { b0 = e.beta; g0 = e.gamma; }
+      b0 += (e.beta - b0) * .008; g0 += (e.gamma - g0) * .008;        // slowly re-centre on however you hold the phone
+      const c = v => Math.max(-1, Math.min(1, v / 14));
+      tilt.tx = c(e.gamma - g0); tilt.ty = c(e.beta - b0);
+    };
+    const startOri = () => {
+      const DOE = window.DeviceOrientationEvent;
+      if (DOE && typeof DOE.requestPermission === 'function') DOE.requestPermission().then(r => { if (r === 'granted') addEventListener('deviceorientation', onOri); }).catch(() => { });
+      else addEventListener('deviceorientation', onOri);
+    };
+    if (typeof window.DeviceOrientationEvent?.requestPermission === 'function') el.addEventListener('pointerdown', startOri, { once: true });   // iPhone asks first
+    else startOri();
+    if (matchMedia('(hover: hover)').matches) el.addEventListener('pointermove', e => {     // a mouse does the same on a computer
+      const r = el.getBoundingClientRect(); tilt.tx = ((e.clientX - r.left) / r.width - .5) * 1.4; tilt.ty = -((e.clientY - r.top) / r.height - .5) * 1.4;
+    });
+  }
   function frame() {
     const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return false;
     renderer.setSize(w, h, false);
     const d = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)), yc = H * CAM_Y, fullH = h * (2 * yc / H);
     camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(yc / d));
     camera.setViewOffset(w, fullH, 0, fullH - h, w, h);
-    camera.position.set(0, yc, d); camera.lookAt(0, yc, 0); camera.updateProjectionMatrix();
+    camBase.set(0, yc, d); camera.zoom = 1.035; aimCamera(); camera.updateProjectionMatrix();
     visW = H * (w / h);
     return true;
   }
@@ -601,6 +638,7 @@ export async function createShelf3D(el, opts) {
   }
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? 3 : 0);
+    bounces.forEach(l => l.intensity = lamps ? .55 : .45);
     key.intensity = lamps ? 1.5 : 3.0; fill.intensity = lamps ? .22 : .32; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .04 : .12;
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
@@ -627,19 +665,30 @@ export async function createShelf3D(el, opts) {
     const boardYs = [PL + BT / 2]; for (let j = 1; j <= 3; j++) boardYs.push(PL + BT + j * (HC + BT) - BT / 2);
     boardYs.forEach((y, j) => {
       const isTop = j === 3; const thick = isTop ? BT * 2.2 : BT;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(bw, thick, DEPTH + 1), boardMat(bw, DEPTH));
+      const m = new THREE.Mesh(RBox(bw, thick, DEPTH + 1, thick * .32), boardMat(bw, DEPTH));
       m.position.set(0, isTop ? y + thick / 2 - BT / 2 : y, -DEPTH / 2 + .5); m.castShadow = m.receiveShadow = true; caseGroup.add(m);
       // a slightly rounded lip on the front edge
-      const lip = new THREE.Mesh(new THREE.CylinderGeometry(thick / 2, thick / 2, bw, 16, 1, true), boardMat(bw, 4, 1));
-      lip.rotation.z = Math.PI / 2; lip.scale.set(1, 1, .35); lip.position.set(0, m.position.y, 1); lip.receiveShadow = true; caseGroup.add(lip);
+      // (front edge is now part of the rounded board)
     });
     // side frame, like a real case
+    // bounce: each shelf top glows faintly upward in the colour of the wood
+    bounces.forEach(l => scene.remove(l)); bounces.length = 0;
+    for (let j = 0; j < 3; j++) {
+      const l = new THREE.RectAreaLight(0xe0a868, 0, visW * .9, DEPTH * .8);
+      l.position.set(0, PL + BT + j * (HC + BT) + .05, -DEPTH / 2); l.lookAt(l.position.x, l.position.y + 10, l.position.z);
+      scene.add(l); bounces.push(l);
+    }
+    applyLamps();
     const POST = 1.2;
     [-1, 1].forEach(sgn => {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(POST, H + 10, DEPTH + 2), boardMat(H, DEPTH, 1));
+      const post = new THREE.Mesh(RBox(POST, H + 10, DEPTH + 2, .35), boardMat(H, DEPTH, 1));
        
       post.material.envMapIntensity = .35; post.material.clearcoat = .2;
       post.position.set(sgn * (visW / 2 - POST / 2), H / 2, -DEPTH / 2 + .9); post.castShadow = post.receiveShadow = true; caseGroup.add(post);
+      for (let j = 1; j <= 3; j++) for (const pz of [-2.6, -DEPTH + 3]) {
+        const pin = new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, .55, 12), brassEdge);
+        pin.rotation.z = Math.PI / 2; pin.position.set(sgn * (visW / 2 - POST - .27), PL + BT + j * (HC + BT) - BT - .16, pz); pin.castShadow = true; caseGroup.add(pin);
+      }
     });
     // carved buttons in the base
     anchorBoxes.length = 0;
@@ -661,7 +710,7 @@ export async function createShelf3D(el, opts) {
       const q = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); q.position.set(wide ? 0 : -visW / 2 + 1.2 + 1.3 + ww / 2, PL / 2 + .1, .32); q.renderOrder = 3; caseGroup.add(q);
     }
     // plinth
-    const pm = new THREE.Mesh(new THREE.BoxGeometry(bw, PL, 3), boardMat(bw, 10)); 
+    const pm = new THREE.Mesh(RBox(bw, PL, 3, .4), boardMat(bw, 10)); 
     pm.position.set(0, PL / 2, -1.2); pm.receiveShadow = true; caseGroup.add(pm);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#3a2414', roughness: 1 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 20); caseGroup.add(floor);
@@ -731,12 +780,19 @@ export async function createShelf3D(el, opts) {
     });
     imgCache.set(url, p); return p;
   }
-  function avgColor(img, sx, sw) {
-    const c = cnv(1, 8), x = c.getContext('2d', { willReadFrequently: true });
-    x.drawImage(img, sx, 0, sw, img.naturalHeight, 0, 0, 1, 8);
-    const d = x.getImageData(0, 0, 1, 8).data; let r = 0, g = 0, b = 0;
-    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-    return [r / 8, g / 8, b / 8];
+  // The most common real colour in a strip of the cover (averaging mixes colours into a muddy grey).
+  function avgColor(img, sx, sw, prefer = 'common') {
+    const W = 12, Hh = 48, c = cnv(W, Hh), x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, sx, 0, sw, img.naturalHeight, 0, 0, W, Hh);
+    const d = x.getImageData(0, 0, W, Hh).data, bk = new Map();
+    for (let i = 0; i < d.length; i += 4) {
+      const k = (d[i] >> 5) << 6 | (d[i + 1] >> 5) << 3 | (d[i + 2] >> 5);
+      const e = bk.get(k) || [0, 0, 0, 0]; e[0] += d[i]; e[1] += d[i + 1]; e[2] += d[i + 2]; e[3]++; bk.set(k, e);
+    }
+    const sat = c3 => { const mx = Math.max(...c3), mn = Math.min(...c3); return mx ? (mx - mn) / mx : 0; };
+    const cols = [...bk.values()].map(e => ({ c: [e[0] / e[3], e[1] / e[3], e[2] / e[3]], n: e[3] }));
+    cols.sort((a, b2) => prefer === 'vivid' ? (b2.n * (.3 + sat(b2.c))) - (a.n * (.3 + sat(a.c))) : b2.n - a.n);
+    return cols[0].c;
   }
   function spineShading(x, w, h) {
     const g = x.createLinearGradient(0, 0, w, 0);
@@ -760,7 +816,7 @@ export async function createShelf3D(el, opts) {
   function coverColours(img) {
     const iw = img.naturalWidth;
     const edge = avgColor(img, 0, Math.max(2, Math.round(iw * .12)));            // what wraps round to the spine
-    const mid = avgColor(img, Math.round(iw * .3), Math.round(iw * .4));
+    const mid = avgColor(img, Math.round(iw * .15), Math.round(iw * .7), 'vivid');
     return { edge, mid };
   }
   const rgbStr = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
@@ -821,11 +877,11 @@ export async function createShelf3D(el, opts) {
     const c = colorsOf(b), col = { ...c, lumDark: c.fg !== '#1d1a16' };
     const hv = hashStr(b.id), jacket = hv % 3 !== 0;
     const sideCol = new THREE.Color(shade(col.bg, .92));
-    const board = new THREE.MeshStandardMaterial({ color: sideCol, roughness: jacket ? .55 : .8, bumpMap: clothTex, bumpScale: jacket ? .15 : .5 });
+    const board = new THREE.MeshStandardMaterial({ color: sideCol, roughness: jacket ? .55 : .8, bumpMap: clothTex, bumpScale: jacket ? .15 : .5, envMapIntensity: .3 });
     const boardEdge = new THREE.MeshStandardMaterial({ color: sideCol.clone().multiplyScalar(.96), roughness: .85 });
     const spine = jacket
-      ? new THREE.MeshPhysicalMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .55, 1), roughness: .5, clearcoat: .35, clearcoatRoughness: .45 })
-      : new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .5, .9), roughness: .86, bumpMap: clothTex, bumpScale: .35 });
+      ? new THREE.MeshPhysicalMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .55, 1), roughness: .55, clearcoat: .14, clearcoatRoughness: .4, envMapIntensity: .3 })
+      : new THREE.MeshStandardMaterial({ map: spineTex(b, dims, col), normalMap: spineNormal, normalScale: new THREE.Vector2(dims.hard ? .3 : .5, .9), roughness: .86, bumpMap: clothTex, bumpScale: .35, envMapIntensity: .3 });
     // the sides take the colour of the cover's edge once the real cover arrives
     if (b.coverUrl && !b.spineUrl) loadImage(b.coverUrl).then(img => {
       if (!img) return;
@@ -841,18 +897,18 @@ export async function createShelf3D(el, opts) {
       const bulge = Math.min(.42, t * .11), spF = d / 2 - bulge;      // front plane of the spine block
       const bdF = spF - SP * .5, bdD = bdF + d / 2;                   // boards tuck into the spine block
       const pgF = spF - SP * .6, pd = pgF + d / 2 - SQ, pw = t - 2 * BT - .02, ph = h - 2 * SQ;
-      add(new THREE.BoxGeometry(pw, ph, pd), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, pgF - pd / 2);
-      for (const sgn of [-1, 1]) { const bm = add(new THREE.BoxGeometry(BT, h, bdD), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - BT / 2), 0, bdF - bdD / 2); if (sgn > 0) g.userData.front = bm; }
-      add(new THREE.BoxGeometry(t, h, SP), [boardEdge, boardEdge, boardEdge, boardEdge, boardEdge, boardEdge], 0, 0, d / 2 - SP / 2 - bulge);
+      add(RBox(pw, ph, pd, .05), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, pgF - pd / 2);
+      for (const sgn of [-1, 1]) { const bm = add(RBox(BT, h, bdD, .09), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - BT / 2), 0, bdF - bdD / 2); if (sgn > 0) g.userData.front = bm; }
+      add(RBox(t, h, SP, .08), [boardEdge, boardEdge, boardEdge, boardEdge, boardEdge, boardEdge], 0, 0, d / 2 - SP / 2 - bulge);
       add(curvedPanel(t, h, bulge), spine, 0, 0, d / 2 - bulge);
       g.userData.front_z = d / 2;
     } else {
       // paperback: flush cut, thin card cover, page edges showing at head and tail
       const CT = .07;
-      add(new THREE.BoxGeometry(t - 2 * CT, h - .02, d - CT), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, -CT / 2);
-      for (const sgn of [-1, 1]) { const bm = add(new THREE.BoxGeometry(CT, h, d), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - CT / 2), 0, 0); if (sgn > 0) g.userData.front = bm; }
+      add(RBox(t - 2 * CT, h - .02, d - CT, .04), [pagesMat, pagesMat, pagesMat, pagesMat, pagesMat, pagesMat], 0, 0, -CT / 2);
+      for (const sgn of [-1, 1]) { const bm = add(RBox(CT, h, d, .12), [board, board, boardEdge, boardEdge, boardEdge, boardEdge], sgn * (t / 2 - CT / 2), 0, 0); if (sgn > 0) g.userData.front = bm; }
       g.userData.front_z = d / 2;
-      add(new THREE.BoxGeometry(t, h, CT), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
+      add(RBox(t, h, CT, .12), [boardEdge, boardEdge, boardEdge, boardEdge, spine, boardEdge], 0, 0, d / 2 - CT / 2);
     }
     if (false) {   // bookmark ribbons removed
       const hv2 = hashStr(b.id + 'r'), rc = ['#a3202c', '#c9a227', '#1f4e79', '#2f6b4a'][hv2 % 4];
@@ -867,7 +923,7 @@ export async function createShelf3D(el, opts) {
     return g;
   }
   function buildBooks() {
-    const shared = new Set([pagesMat, edgeAOMat, floorAOMat, ironMat]);
+    const shared = new Set([pagesMat, edgeAOMat, floorAOMat, ironMat, contactMat]);
     booksGroup.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => !shared.has(m) && m.dispose()); });
     geoms.forEach(g => g.dispose()); geoms.length = 0; booksGroup.clear();
     rows = ROWS.map((st, j) => {
@@ -888,7 +944,8 @@ export async function createShelf3D(el, opts) {
         mesh.position.set(dims.t / 2, dims.h / 2, 0);
         pivot.add(mesh);
         pivot.position.set(x, base, -1.4 - dims.d / 2 - ((hv >>> 4) % 10) * .09);
-        pivot.rotation.y = ((hv % 5) - 2) * .01;
+        pivot.rotation.y = ((hv % 5) - 2) * .012;
+        pivot.rotation.z = (((hv >>> 7) % 7) - 3) * .0035;   // a degree or so off upright
         // contact shading where this book meets its neighbours
         const zf = mesh.userData.front_z + .02, aw = Math.min(.55, dims.t * .3), aos = [];
         [[-1, sDims[i - 1]], [1, sDims[i + 1]]].forEach(([sg, nb]) => {
@@ -898,6 +955,9 @@ export async function createShelf3D(el, opts) {
           q.renderOrder = 2; mesh.add(q); aos.push(q);
         });
         mesh.userData.aos = aos;
+        // tight, dark shadow right where the book stands; the cast shadow softens further out
+        const cs = new THREE.Mesh(new THREE.PlaneGeometry(dims.t * 1.9 + .5, dims.d * 1.3 + .5), contactMat); geoms.push(cs.geometry);
+        cs.rotation.x = -Math.PI / 2; cs.position.set(dims.t / 2, .025, 0); cs.renderOrder = 1; pivot.add(cs); pivot.userData.contact = cs;
         x += dims.t + .02 + (hv % 9 === 0 ? .1 : 0);
         pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone(), d: dims.d };
         g.add(pivot); items.push(pivot);
@@ -936,6 +996,7 @@ export async function createShelf3D(el, opts) {
         const hPrev = sDims[standing.length - 2].h;
         p.position.x = prevRight + Math.min(dims.h * Math.sin(a), hPrev * Math.tan(a)) + dims.t * Math.cos(a) + .03; p.rotation.z = a;
         p.position.y += dims.t * Math.sin(a);
+        if (p.userData.contact) { p.userData.contact.visible = false; p.userData.contact = null; }
         p.userData.home = p.position.clone(); p.userData.rot = p.rotation.clone();
       }
       const row = { st, group: g, items, base, contentW, offset: 0, vel: 0 };
@@ -985,7 +1046,7 @@ export async function createShelf3D(el, opts) {
   function showCover(m, on) {
     const fb = m.userData.front; if (!fb) return;
     if (on) {
-      if (!m.userData.coverMat) m.userData.coverMat = new THREE.MeshStandardMaterial({ map: coverTex(m.userData.book, m.userData.col), roughness: .55 });
+      if (!m.userData.coverMat) m.userData.coverMat = new THREE.MeshStandardMaterial({ map: coverTex(m.userData.book, m.userData.col), roughness: .55, envMapIntensity: .3 });
       fb.material = fb.material.slice(); fb.material[0] = m.userData.coverMat;
     }   // the cover stays on the book when it goes back
     (m.userData.aos || []).forEach(q => q.visible = !on);
@@ -1005,6 +1066,7 @@ export async function createShelf3D(el, opts) {
   // The book leaves the shelf, turns its cover to you and rises to the top of the screen.
   function toHero(p, instant, delay = 0) {
     const m = p.children[0], t = heroTarget(p);
+    if (p.userData.contact) p.userData.contact.visible = false;
     showCover(m, true); m.traverse(o => { if (o.isMesh) o.castShadow = false; }); dim.visible = true;
     const go = (o, k, v, dur) => { if (instant) o[k] = v; else tween(o, k, v, dur, delay); };
     go(p.position, 'x', t.x, 560); go(p.position, 'y', t.y, 560); go(p.position, 'z', t.z, 560);
@@ -1037,7 +1099,7 @@ export async function createShelf3D(el, opts) {
     tween(p.rotation, 'z', r0.z, 400); tween(p.rotation, 'y', r0.y, 400);
     tween(dim.material, 'opacity', 0, 380);
     tween(p.position, 'z', h.z, 300, 400); tween(p.position, 'y', h.y, 300, 400);
-    setTimeout(() => { if (pulled !== p) { showCover(m, false); m.traverse(o => { if (o.isMesh && o.material !== edgeAOMat) o.castShadow = true; }); needs = true; } if (!pulled) dim.visible = false; }, 740);
+    setTimeout(() => { if (pulled !== p) { if (p.userData.contact) p.userData.contact.visible = true; showCover(m, false); m.traverse(o => { if (o.isMesh && o.material !== edgeAOMat) o.castShadow = true; }); needs = true; } if (!pulled) dim.visible = false; }, 740);
   }
   function tween(obj, prop, to, dur, delay = 0) {
     tweens.push({ obj, prop, from: null, to, dur, start: performance.now() + delay });
@@ -1057,7 +1119,11 @@ export async function createShelf3D(el, opts) {
       else r.vel = 0;
       if (r.offset > 0 || r.offset < r.min) { const target = r.offset > 0 ? 0 : r.min; r.offset += (target - r.offset) * .18; if (Math.abs(target - r.offset) < .01) r.offset = target; r.group.position.x = r.offset; r.vel *= .5; needs = true; }
     }
-    if (needs && !paused) { renderer.render(scene, camera); needs = false; }
+    let moved = false;
+    if (Math.abs(tilt.tx - tilt.x) > .002 || Math.abs(tilt.ty - tilt.y) > .002) { tilt.x += (tilt.tx - tilt.x) * .12; tilt.y += (tilt.ty - tilt.y) * .12; aimCamera(); moved = true; }
+    if (paused) return;
+    if (needs) { renderer.shadowMap.needsUpdate = true; renderer.render(scene, camera); needs = false; }   // the scene changed: refresh shadows too
+    else if (moved) renderer.render(scene, camera);                                                         // only the view moved: shadows stay put
   }
 
   function rebuild() {
@@ -1073,7 +1139,7 @@ export async function createShelf3D(el, opts) {
   ro.observe(el);
   frame(); buildCase(); buildBooks(); placeAnchors();
   await Promise.race([envReady, new Promise(r => setTimeout(r, 2500))]);
-  renderer.render(scene, camera); loop();
+  renderer.shadowMap.needsUpdate = true; renderer.render(scene, camera); loop();
 
   return {
     el,
