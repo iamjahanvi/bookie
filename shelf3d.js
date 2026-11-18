@@ -10,9 +10,9 @@ const RBox = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 3, Math.max(.004, M
 
 const BT = 2.0;      // board thickness
 const HC = 25;       // clear height of a compartment
-const PL = 11;       // plinth (kickboard) height — the carved buttons live here
+let PL = 11;         // plinth height: grown at run time so the floating bar sits clear of the bottom shelf
 const DEPTH = 26;    // shelf depth
-const H = PL + BT + 3 * (HC + BT);
+let H = PL + BT + 3 * (HC + BT);
 const FOV = 24;
 const CAM_Y = .86;   // eye height, as a fraction of the bookcase
 const ROWS = ['want', 'finished', 'reading'];          // bottom → top
@@ -316,7 +316,7 @@ function brassMaps(text) {
   for (let i = 0; i < 14; i++) { const v = Math.round(255 * (.35 + .65 * i / 13)); hx.fillStyle = `rgb(${v},${v},${v})`; const r = 22 - i; hx.beginPath(); hx.roundRect(i, i, w - 2 * i, h - 2 * i, Math.max(2, r)); hx.fill(); }
   const sx = [46, w - 46];
   for (const cx of sx) { const g = hx.createRadialGradient(cx - 4, h / 2 - 4, 1, cx, h / 2, 17); g.addColorStop(0, '#fff'); g.addColorStop(.85, '#bbb'); g.addColorStop(1, '#555'); hx.fillStyle = g; hx.beginPath(); hx.arc(cx, h / 2, 17, 0, 7); hx.fill(); }
-  hx.font = '600 76px "IBM Plex Mono", ui-monospace, monospace'; hx.textAlign = 'center'; hx.textBaseline = 'middle';
+  hx.font = '700 84px "IBM Plex Mono", ui-monospace, monospace'; if ('letterSpacing' in hx) hx.letterSpacing = '4px'; hx.textAlign = 'center'; hx.textBaseline = 'middle';
   hx.fillStyle = '#6a6a6a'; hx.fillText(text, w / 2, h / 2 + 3);
   const hd = hx.getImageData(0, 0, w, h).data;
   // normal map via sobel
@@ -330,16 +330,19 @@ function brassMaps(text) {
   nx.putImageData(ni, 0, 0);
   // colour: polished brass, darker patina in the engraving and screw slots, fingerprints of age
   const C = cnv(w, h), cx = C.getContext('2d');
-  const g = cx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#d8b46a'); g.addColorStop(.5, '#c39a4c'); g.addColorStop(1, '#a98236'); cx.fillStyle = g; cx.fillRect(0, 0, w, h);
+  const g = cx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#e6c47a'); g.addColorStop(.5, '#cfa555'); g.addColorStop(1, '#b08838'); cx.fillStyle = g; cx.fillRect(0, 0, w, h);
   const hh = hash2(41);
   for (let i = 0; i < 9000; i++) { const y = hh(i, 2) * h; cx.fillStyle = `rgba(${hh(i, 5) > .5 ? '255,236,190' : '90,62,20'},${hh(i, 1) * .1})`; cx.fillRect(hh(i, 3) * w, y, 30 + hh(i, 4) * 120, 1); }
   for (let i = 0; i < 6; i++) { const r = cx.createRadialGradient(hh(i, 9) * w, hh(i, 10) * h, 2, hh(i, 9) * w, hh(i, 10) * h, 60 + hh(i, 11) * 80); r.addColorStop(0, 'rgba(70,50,20,.12)'); r.addColorStop(1, 'rgba(70,50,20,0)'); cx.fillStyle = r; cx.fillRect(0, 0, w, h); }
-  cx.font = hx.font; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#2b1e0c'; cx.fillText(text, w / 2, h / 2 + 3);
+  cx.font = hx.font; if ('letterSpacing' in cx) cx.letterSpacing = '4px'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillStyle = 'rgba(255,236,190,.55)'; cx.fillText(text, w / 2, h / 2 + 5);   // lit lower lip of the engraving
+  cx.fillStyle = '#140c03'; cx.fillText(text, w / 2, h / 2 + 2);
+  cx.strokeStyle = 'rgba(40,24,6,.85)'; cx.lineWidth = 7; cx.strokeRect(3.5, 3.5, w - 7, h - 7);
   for (const sxp of sx) { cx.strokeStyle = 'rgba(40,28,10,.85)'; cx.lineWidth = 4; cx.beginPath(); cx.moveTo(sxp - 11, h / 2 - 6); cx.lineTo(sxp + 11, h / 2 + 6); cx.stroke(); }
   // roughness: brushed metal, rougher in the grooves
   const R = cnv(w, h), rx = R.getContext('2d'); rx.fillStyle = 'rgb(80,80,80)'; rx.fillRect(0, 0, w, h);
   for (let i = 0; i < 7000; i++) { const v = 50 + hh(i, 7) * 70; rx.fillStyle = `rgb(${v},${v},${v})`; rx.fillRect(hh(i, 3) * w, hh(i, 2) * h, 40 + hh(i, 6) * 160, 1); }
-  rx.font = hx.font; rx.textAlign = 'center'; rx.textBaseline = 'middle'; rx.fillStyle = 'rgb(220,220,220)'; rx.fillText(text, w / 2, h / 2 + 3);
+  rx.font = hx.font; if ('letterSpacing' in rx) rx.letterSpacing = '4px'; rx.textAlign = 'center'; rx.textBaseline = 'middle'; rx.fillStyle = 'rgb(220,220,220)'; rx.fillText(text, w / 2, h / 2 + 3);
   return { color: C, normal: N, rough: R };
 }
 
@@ -451,6 +454,48 @@ function woodMaterial(axis, seed, plank = 0, tone = 1) {
   return m;
 }
 
+/* ---------- sound ---------- */
+const sfx = (() => {
+  let ac = null, noise = null;
+  const ctx = () => {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+      const n = ac.sampleRate * 1.5, b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0);
+      let last = 0; for (let i = 0; i < n; i++) { const wv = Math.random() * 2 - 1; last = last * .55 + wv * .45; d[i] = last; }   // softened noise
+      noise = b; }
+    if (ac.state === 'suspended') ac.resume().catch(() => { });
+    return ac;
+  };
+  const vary = (v, a) => v * (1 + (Math.random() * 2 - 1) * a);
+  // paper and board sliding against wood and the neighbouring books
+  function slide(t0, dur, level, from, to) {
+    const a = ac, src = a.createBufferSource(); src.buffer = noise; src.playbackRate.value = vary(1, .08);
+    const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = .7;
+    bp.frequency.setValueAtTime(from, t0); bp.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+    const hp = a.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 280;
+    const g = a.createGain(); g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(level, t0 + dur * .25); g.gain.linearRampToValueAtTime(level * .55, t0 + dur * .7); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    src.connect(bp).connect(hp).connect(g).connect(a.destination); src.start(t0, Math.random()); src.stop(t0 + dur + .05);
+  }
+  // a book's weight settling on a wooden shelf: a dull, short body thud with a little contact click
+  function knock(t0, level) {
+    const a = ac, o = a.createOscillator(), og = a.createGain(), lp = a.createBiquadFilter();
+    o.type = 'sine'; const f = vary(118, .12); o.frequency.setValueAtTime(f * 1.6, t0); o.frequency.exponentialRampToValueAtTime(f, t0 + .03);
+    lp.type = 'lowpass'; lp.frequency.value = 900;
+    og.gain.setValueAtTime(0, t0); og.gain.linearRampToValueAtTime(level, t0 + .004); og.gain.exponentialRampToValueAtTime(.0001, t0 + .14);
+    o.connect(lp).connect(og).connect(a.destination); o.start(t0); o.stop(t0 + .16);
+    const c = a.createBufferSource(); c.buffer = noise; const cf = a.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = vary(1900, .15); cf.Q.value = 1.2;
+    const cg = a.createGain(); cg.gain.setValueAtTime(level * .5, t0); cg.gain.exponentialRampToValueAtTime(.0001, t0 + .035);
+    c.connect(cf).connect(cg).connect(a.destination); c.start(t0, Math.random()); c.stop(t0 + .05);
+  }
+  const play = fn => { const a = ctx(); if (a && noise) fn(a.currentTime + .01); };
+  return {
+    pull: () => play(t => slide(t, vary(.26, .1), .09, 1400, 2600)),
+    back: () => play(t => { slide(t, vary(.22, .1), .07, 2400, 1200); knock(t + .2, .16); }),
+    place: () => play(t => { slide(t, vary(.38, .1), .07, 1800, 1100); knock(t + .36, .2); }),
+    unlock: () => ctx(),
+  };
+})();
+
 /* ---------- the bookcase ---------- */
 export async function createShelf3D(el, opts) {
   const { colorsOf, onPick, coverSrc, onDismiss } = opts;
@@ -486,7 +531,7 @@ export async function createShelf3D(el, opts) {
 
   const hemi = new THREE.HemisphereLight(0xfff4e4, 0x6b4a2c, 0.12); scene.add(hemi);
   const key = new THREE.DirectionalLight(0xffe4c4, 2.7); key.castShadow = true;
-  key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 11; key.shadow.blurSamples = 16;
+  key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 9; key.shadow.blurSamples = 16; key.shadow.intensity = .42;
   scene.add(key, key.target);
   RectAreaLightUniformsLib.init();
   const bounces = [];
@@ -507,22 +552,29 @@ export async function createShelf3D(el, opts) {
     return new THREE.CanvasTexture(c); })();
   const floorAOMat = new THREE.MeshBasicMaterial({ map: vGradTex, transparent: true, opacity: .16, depthWrite: false });
   const contactTex = (() => { const c = cnv(128, 128), x = c.getContext('2d');
-    x.filter = 'blur(10px)'; x.fillStyle = '#000'; x.fillRect(26, 26, 76, 76);
+    const g = x.createRadialGradient(64, 64, 4, 64, 64, 62);
+    g.addColorStop(0, 'rgba(0,0,0,.9)'); g.addColorStop(.45, 'rgba(0,0,0,.55)'); g.addColorStop(.75, 'rgba(0,0,0,.18)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 128, 128);
     const t = new THREE.CanvasTexture(c); return t; })();
-  const contactMat = new THREE.MeshBasicMaterial({ map: contactTex, color: 0x1a0d04, transparent: true, opacity: .55, depthWrite: false });
+  const contactMat = new THREE.MeshBasicMaterial({ map: contactTex, color: 0x1a0d04, transparent: true, opacity: .42, depthWrite: false, visible: false });   // painted pools read as dark blobs; real shadows only
   const ironMat = new THREE.MeshStandardMaterial({ color: '#2a2622', metalness: .7, roughness: .42 });
   const brassEdge = new THREE.MeshStandardMaterial({ color: '#b48c42', metalness: 1, roughness: .38 });
   const spineNormal = new THREE.CanvasTexture(spineNormalCanvas()); spineNormal.colorSpace = THREE.NoColorSpace; spineNormal.wrapT = THREE.RepeatWrapping;
 
   const caseGroup = new THREE.Group(), booksGroup = new THREE.Group(); scene.add(caseGroup, booksGroup);
+  let primed = false, clock = 0, lastReal = performance.now();
   let visW = 50, rows = [], books = [], view = 'spines', needs = true, raf = 0, disposed = false, paused = false;
   const texCache = new Map(), coverCache = new Map(), tweens = [];
   const geoms = [];
 
   const camBase = new THREE.Vector3(), tilt = { x: 0, y: 0, tx: 0, ty: 0 };
+  const win = { x0: 0, x1: 0, y0: 0, y1: 0, z: 1.2 };
   function aimCamera() {
-    camera.position.set(camBase.x + tilt.x * 1.5, camBase.y + tilt.y * 1.1, camBase.z);
-    camera.lookAt(camBase.x + tilt.x * .35, camBase.y + tilt.y * .25, 0);
+    const ex = camBase.x + tilt.x * 14, ey = camBase.y + tilt.y * 10, ez = camBase.z;
+    camera.position.set(ex, ey, ez); camera.quaternion.identity(); camera.updateMatrixWorld();
+    const n = camera.near, k = n / (ez - win.z);
+    camera.projectionMatrix.makePerspective((win.x0 - ex) * k, (win.x1 - ex) * k, (win.y1 - ey) * k, (win.y0 - ey) * k, n, camera.far);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
   }
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!reduced) {
@@ -530,8 +582,8 @@ export async function createShelf3D(el, opts) {
     const onOri = e => {
       if (e.beta == null || e.gamma == null) return;
       if (b0 === null) { b0 = e.beta; g0 = e.gamma; }
-      b0 += (e.beta - b0) * .008; g0 += (e.gamma - g0) * .008;        // slowly re-centre on however you hold the phone
-      const c = v => Math.max(-1, Math.min(1, v / 14));
+      b0 += (e.beta - b0) * .0025; g0 += (e.gamma - g0) * .0025;        // slowly re-centre on however you hold the phone
+      const c = v => Math.max(-1, Math.min(1, v / 12));
       tilt.tx = c(e.gamma - g0); tilt.ty = c(e.beta - b0);
     };
     const startOri = () => {
@@ -549,10 +601,17 @@ export async function createShelf3D(el, opts) {
     const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return false;
     renderer.setSize(w, h, false);
     const d = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)), yc = H * CAM_Y, fullH = h * (2 * yc / H);
-    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(yc / d));
-    camera.setViewOffset(w, fullH, 0, fullH - h, w, h);
-    camBase.set(0, yc, d); camera.zoom = 1.035; aimCamera(); camera.updateProjectionMatrix();
+    const Z = 1.06, Y0 = .3, dock = document.querySelector('.dock');
+    let need = 110;   // px from the bottom of the screen to the bottom of the lowest shelf
+    if (dock) { const r = dock.getBoundingClientRect(), gap = Math.max(14, innerHeight - r.bottom); need = (innerHeight - r.top) + gap - 11; }
+    const f = need * Z / h;                                         // fraction of the case height the base must fill
+    PL = Math.max(9, Math.min(30, (f * (BT + 3 * (HC + BT)) + Y0) / (1 - f)));
+    H = PL + BT + 3 * (HC + BT);
+    const d2 = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)); camBase.z = d2;
     visW = H * (w / h);
+    const hw = visW / 2 / Z, hh = H / 2 / Z;                        // the screen shows exactly the front of the case
+    Object.assign(win, { x0: -hw, x1: hw, y0: Y0, y1: Y0 + 2 * hh });
+    camera.aspect = w / h; camBase.set(0, H * CAM_Y, d2); aimCamera();
     return true;
   }
   function placeAnchors() {
@@ -722,7 +781,7 @@ export async function createShelf3D(el, opts) {
       const nm = new THREE.CanvasTexture(mp.normal); nm.colorSpace = THREE.NoColorSpace; nm.anisotropy = aniso;
       const rm = new THREE.CanvasTexture(mp.rough); rm.colorSpace = THREE.NoColorSpace;
       const mat = new THREE.MeshPhysicalMaterial({ map: tex(mp.color), normalMap: nm, normalScale: new THREE.Vector2(1.2, 1.2), roughnessMap: rm, roughness: 1, metalness: 1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: 1.6 });
-      const pw = 10.4, ph = pw * 200 / 1024;
+      const pw = 12.4, ph = Math.min(BT + .25, pw * 200 / 1024);
       const plate = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, .12), [brassEdge, brassEdge, brassEdge, brassEdge, mat, brassEdge]);
       plate.position.set(0, y, 1.48); plate.castShadow = true; caseGroup.add(plate);
     });
@@ -746,7 +805,7 @@ export async function createShelf3D(el, opts) {
     }
     applyLamps();
     // light
-    key.position.set(-visW * .15 - 4, H + 95, 150); key.target.position.set(0, H / 2, -DEPTH / 2);
+    key.position.set(visW * .12 + 3, H + 170, 95); key.target.position.set(0, H / 2, -DEPTH / 2);
     const sc = key.shadow.camera; const R = Math.max(W, H) * .9 + 40; sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 400; sc.updateProjectionMatrix();
   }
 
@@ -956,7 +1015,7 @@ export async function createShelf3D(el, opts) {
         });
         mesh.userData.aos = aos;
         // tight, dark shadow right where the book stands; the cast shadow softens further out
-        const cs = new THREE.Mesh(new THREE.PlaneGeometry(dims.t * 1.9 + .5, dims.d * 1.3 + .5), contactMat); geoms.push(cs.geometry);
+        const cs = new THREE.Mesh(new THREE.PlaneGeometry(dims.t + 2.2, dims.d + 2.4), contactMat); geoms.push(cs.geometry);
         cs.rotation.x = -Math.PI / 2; cs.position.set(dims.t / 2, .025, 0); cs.renderOrder = 1; pivot.add(cs); pivot.userData.contact = cs;
         x += dims.t + .02 + (hv % 9 === 0 ? .1 : 0);
         pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone(), d: dims.d };
@@ -997,6 +1056,11 @@ export async function createShelf3D(el, opts) {
         p.position.x = prevRight + Math.min(dims.h * Math.sin(a), hPrev * Math.tan(a)) + dims.t * Math.cos(a) + .03; p.rotation.z = a;
         p.position.y += dims.t * Math.sin(a);
         if (p.userData.contact) { p.userData.contact.visible = false; p.userData.contact = null; }
+        // the lifted, leaning book only casts a faint shadow: a full one floats off as a dark blob
+        m.traverse(o => { if (o.isMesh) o.castShadow = false; });
+        { const cs = new THREE.Mesh(new THREE.PlaneGeometry(dims.t + 1.4, dims.d + 1.6), contactMat); geoms.push(cs.geometry);
+          cs.rotation.x = -Math.PI / 2; cs.position.set(prevRight + dims.t * .55, base + .025, p.position.z); cs.renderOrder = 1; cs.material = contactMat; cs.scale.set(1, 1, 1); g.add(cs);
+          cs.userData.lean = true; p.userData.contactFlat = cs; }
         p.userData.home = p.position.clone(); p.userData.rot = p.rotation.clone();
       }
       const row = { st, group: g, items, base, contentW, offset: 0, vel: 0 };
@@ -1016,6 +1080,7 @@ export async function createShelf3D(el, opts) {
   }
   let drag = null;
   const pxToWorld = () => visW / el.clientWidth;
+  el.addEventListener('pointerdown', () => sfx.unlock(), { capture: true });
   el.addEventListener('pointerdown', e => {
     if (pulled) { drag = { dismiss: true }; return; }
     const row = rowAt(e); drag = { x: e.clientX, y: e.clientY, t: e.timeStamp, row, last: e.clientX, lt: performance.now(), moved: false };
@@ -1060,13 +1125,14 @@ export async function createShelf3D(el, opts) {
     const m = p.children[0], dm = m.userData.dims, d = camera.position.z;
     const k = Math.min(1.75, Math.max(1.15, .29 * H / dm.h));          // how much nearer the camera
     const row = rows.find(r => r.items.includes(p));
-    const yc = camera.position.y;
+    const yc = camBase.y;
     return { x: -(row ? row.group.position.x : 0) - m.position.x, y: yc + (.80 * H - yc) / k - m.position.y, z: d * (1 - 1 / k) };
   }
   // The book leaves the shelf, turns its cover to you and rises to the top of the screen.
   function toHero(p, instant, delay = 0) {
     const m = p.children[0], t = heroTarget(p);
     if (p.userData.contact) p.userData.contact.visible = false;
+    if (p.userData.contactFlat) p.userData.contactFlat.visible = false;
     showCover(m, true); m.traverse(o => { if (o.isMesh) o.castShadow = false; }); dim.visible = true;
     const go = (o, k, v, dur) => { if (instant) o[k] = v; else tween(o, k, v, dur, delay); };
     go(p.position, 'x', t.x, 560); go(p.position, 'y', t.y, 560); go(p.position, 'z', t.z, 560);
@@ -1079,7 +1145,7 @@ export async function createShelf3D(el, opts) {
     scene.updateMatrixWorld(); toNDC(e); ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(booksGroup.children, true)[0]; if (!hit) return;
     let p = hit.object; while (p && !p.userData?.home) p = p.parent; if (!p) return;
-    pushBack(); pulled = p;
+    pushBack(); pulled = p; sfx.pull();
     cancel(p.position, p.rotation, p.children[0].rotation, dim.material);
     tween(p.position, 'z', outZ(p), 240);                               // 1. slide out of the row
     tween(p.position, 'y', p.userData.home.y + (p.userData.flat ? 1.6 : .6), 240);
@@ -1093,21 +1159,22 @@ export async function createShelf3D(el, opts) {
   }
   function pushBack() {
     if (!pulled) return; const p = pulled; pulled = null; const m = p.children[0], h = p.userData.home, r0 = p.userData.rot;
+    setTimeout(() => sfx.back(), 300);
     cancel(p.position, p.rotation, m.rotation, dim.material);
     tween(p.position, 'x', h.x, 420); tween(p.position, 'y', h.y + .6, 420); tween(p.position, 'z', outZ(p), 420);
     tween(m.rotation, 'y', 0, 400); tween(m.rotation, 'z', p.userData.flat ? Math.PI / 2 : 0, 400);
     tween(p.rotation, 'z', r0.z, 400); tween(p.rotation, 'y', r0.y, 400);
     tween(dim.material, 'opacity', 0, 380);
     tween(p.position, 'z', h.z, 300, 400); tween(p.position, 'y', h.y, 300, 400);
-    setTimeout(() => { if (pulled !== p) { if (p.userData.contact) p.userData.contact.visible = true; showCover(m, false); m.traverse(o => { if (o.isMesh && o.material !== edgeAOMat) o.castShadow = true; }); needs = true; } if (!pulled) dim.visible = false; }, 740);
+    setTimeout(() => { if (pulled !== p) { if (p.userData.contact) p.userData.contact.visible = true; if (p.userData.contactFlat) p.userData.contactFlat.visible = true; showCover(m, false); if (!p.userData.contactFlat) m.traverse(o => { if (o.isMesh && o.material !== edgeAOMat) o.castShadow = true; }); needs = true; } if (!pulled) dim.visible = false; }, 740);
   }
   function tween(obj, prop, to, dur, delay = 0) {
-    tweens.push({ obj, prop, from: null, to, dur, start: performance.now() + delay });
+    tweens.push({ obj, prop, from: null, to, dur, start: clock + delay });
   }
 
   function loop() {
     if (disposed) return; raf = requestAnimationFrame(loop);
-    const now = performance.now();
+    const real = performance.now(); clock += Math.min(34, real - lastReal); lastReal = real; const now = clock;
     for (let i = tweens.length - 1; i >= 0; i--) {
       const t = tweens[i]; if (t.dead) { tweens.splice(i, 1); continue; } if (now < t.start) { needs = true; continue; }
       if (t.from === null) { for (const o of tweens) if (o !== t && o.obj === t.obj && o.prop === t.prop && o.from !== null) o.dead = true; t.from = t.obj[t.prop]; }
@@ -1144,8 +1211,19 @@ export async function createShelf3D(el, opts) {
   return {
     el,
     update(nextBooks, nextView) {
+      const before = new Set(books.map(b => b.id)), first = !primed; primed = true;
       books = nextBooks.slice(); view = nextView; rebuild();
+      if (first) return;
+      for (const b of books) if (!before.has(b.id)) {
+        const p = findPivot(b.id); if (!p) continue;
+        const row = rows.find(r => r.items.includes(p)), hx = p.userData.home.x;
+        p.position.x = visW / 2 - (row ? row.group.position.x : 0) + 8;          // just off the right edge
+        p.position.z = p.userData.home.z + 3;
+        tween(p.position, 'x', hx, 620, 80); tween(p.position, 'z', p.userData.home.z, 260, 620);
+        sfx.place();
+      }
     },
+    relayout() { if (frame()) rebuild(); },
     pushBack, focus,
     setLamps(v) { lamps = !!v; applyLamps(); },
     setAnchors(a) { anchors = a; placeAnchors(); },

@@ -198,7 +198,7 @@ async function init3d() {
     more.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10 5 7 4.6 4 5.2v13c3-.6 6-.2 8 1.3 2-1.5 5-1.9 8-1.3v-13c-3-.6-6-.2-8 1.3zM12 6.5v13"/></svg>' + sr('Lines and stats');
     fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg>' + sr('Add a book');
     [lamp, more, fab].forEach(n => { n.className = 'dk' + (n === fab ? ' dk-add' : ''); dock.append(n); });
-    document.body.append(dock);
+    document.body.append(dock); shelf3d.relayout();
     lamp.onclick = () => { const on = pref.get('lamps', '0') !== '1'; pref.set('lamps', on ? '1' : '0'); lamp.setAttribute('aria-pressed', on); shelf3d.setLamps(on); try { navigator.vibrate?.(8) } catch { } };
     lamp.setAttribute('aria-pressed', pref.get('lamps', '0') === '1');
   } catch (e) { console.warn('3D bookcase unavailable, using flat shelves', e); shelf3dState = 'failed' }
@@ -454,7 +454,7 @@ function bookSheet(existing) {
       if (b.status === 'finished' && !b.finished) b.finished = today();
       if (!b.accent) delete b.accent;
       saveBook(b); close(); designSpines();
-      if (!existing) { toast('Shelved.'); setTimeout(() => openDetail(b.id), 250) }
+      if (!existing) { toast('Shelved.'); setTimeout(() => openDetail(b.id), shelf3d ? 1250 : 250) }
     };
     if (!existing) setTimeout(() => $('#f-q', body).focus(), 350);
   });
