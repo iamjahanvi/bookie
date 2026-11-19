@@ -413,7 +413,8 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   vec3 q = p;
   q.yz += (wfbm(vec3(p.x * .018, p.yz * .14)) - .5) * 1.3;         // the trunk is never straight
   q.yz += (wn(vec3(p.x * .1, p.yz * .9)) - .5) * .06;
-  float r = length(q.yz - vec2(2., -34.)) * 5.2;                   // distance from the pith
+  q.yz += (wfbm(vec3(p.x * .07, p.yz * .22)) - .5) * 1.1;         // grain meanders along the board, so no line runs straight
+  float r = length(q.yz - vec2(2., -34.)) * 2.3;                   // wider rings: grain lines several pixels thick                   // distance from the pith
   // Anti-aliasing: every detail fades out once it's finer than a couple of screen pixels,
   // so the grain stays still instead of shimmering when the view shifts a fraction of a pixel.
   float fw = length(fwidth(p.yz)) * .55, rw = fwidth(r) * .55;   // baked: keep detail up to the texture's limit, mipmaps do the rest
@@ -428,13 +429,13 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   float pore = smoothstep(.83, .92, wn(vec3(p.x * 1.4, p.yz * 24.))) * (1. - .6 * late) * aP;   // open pores, drawn out along the grain
   float streak = wfbm(vec3(p.x * .01, p.yz * .3));               // long heartwood streaks
   vec3 cE = vec3(.43, .27, .135), cL = vec3(.31, .185, .085), cW = vec3(.52, .35, .18), cG = vec3(.36, .26, .16);
-  col = mix(cE, cL, late * (.26 + .3 * yr));
+  col = mix(cE, cL * .92, late * (.5 + .35 * yr));
   col *= .9 + yr * .2;
   col = mix(col, cG, smoothstep(.5, .8, streak) * .4);
   col = mix(col, cW, smoothstep(.5, .2, streak) * .35);
-  col *= .92 + fibre * .16;
-  col *= 1. - fine * .1;
-  col = mix(col, cL * .6, pore * .5);
+  col *= .97 + fibre * .06;                                         // hairline fibres kept faint: straight thin lines crawl on screens
+  col *= 1. - fine * .03;
+  col = mix(col, cL * .6, pore * .22);
   col *= mix(.18, 1., seam) * uTone;
   hgt = -late * .18 - pore * .22 + fibre * .06 - (1. - seam) * 2.5;
   rgh = .34 + late * .06 + pore * .12 - (fibre - .5) * .05 + (streak - .5) * .06;
