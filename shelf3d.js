@@ -884,21 +884,52 @@ export async function createShelf3D(el, opts) {
     return { edge, mid };
   }
   const rgbStr = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+  // Read the whole cover: its colour groups, how bright, how colourful and how busy it is.
+  function readCover(img) {
+    const W = 24, Hh = 36, c = cnv(W, Hh), x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, W, Hh);
+    const d = x.getImageData(0, 0, W, Hh).data, bk = new Map(); let lumSum = 0, lumSq = 0, satSum = 0, n = 0;
+    const L = c3 => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }; return .2126 * f(c3[0]) + .7152 * f(c3[1]) + .0722 * f(c3[2]); };
+    const S = c3 => { const mx = Math.max(...c3), mn = Math.min(...c3); return mx ? (mx - mn) / mx : 0; };
+    for (let i = 0; i < d.length; i += 4) {
+      const px = [d[i], d[i + 1], d[i + 2]], l = L(px); lumSum += l; lumSq += l * l; satSum += S(px); n++;
+      const k = (d[i] >> 5) << 6 | (d[i + 1] >> 5) << 3 | (d[i + 2] >> 5);
+      const e = bk.get(k) || [0, 0, 0, 0]; e[0] += d[i]; e[1] += d[i + 1]; e[2] += d[i + 2]; e[3]++; bk.set(k, e);
+    }
+    const groups = [...bk.values()].map(e => { const c3 = [e[0] / e[3], e[1] / e[3], e[2] / e[3]]; return { c: c3, n: e[3] / n, l: L(c3), s: S(c3) }; }).sort((a, b2) => b2.n - a.n);
+    const mean = lumSum / n;
+    return { groups, mean, contrast: Math.sqrt(Math.max(0, lumSq / n - mean * mean)), sat: satSum / n, busy: groups.filter(g => g.n > .03).length, L };
+  }
+  const ratio = (a, b2) => (Math.max(a, b2) + .05) / (Math.min(a, b2) + .05);
+  // A spine designed from the cover without any AI: background from the wrap-around edge,
+  // lettering in the cover's own title colour, an accent from its strongest colour, a style that suits its look.
   function spineFromCover(b, dims, col, img) {
     const w = Math.max(20, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
     const c = cnv(w, h), x = c.getContext('2d');
-    const { edge, mid } = coverColours(img);
+    const { edge } = coverColours(img), info = readCover(img), bgL = info.L(edge);
     x.fillStyle = rgbStr(edge); x.fillRect(0, 0, w, h);
     speckle(x, w, h, hashStr(b.id), .8);
-    const light = (0.2126 * edge[0] + 0.7152 * edge[1] + 0.0722 * edge[2]) / 255 > .55;
-    const ink = light ? '#1d1a16' : '#f6efe2';
-    const dist = Math.hypot(edge[0] - mid[0], edge[1] - mid[1], edge[2] - mid[2]);
-    const acc = dist > 60 ? rgbStr(mid) : (light ? '#7a2b22' : '#e2c27a');
-    typeSpine(x, w, h, b, styleOf(b, w), ink, acc);
+    // lettering: a real colour from the cover that reads clearly on the background (title type is usually that)
+    const inkG = info.groups.filter(g => g.n > .006 && ratio(g.l, bgL) >= 3.2).sort((a, b2) => (b2.n * ratio(b2.l, bgL)) - (a.n * ratio(a.l, bgL)))[0];
+    const ink = inkG ? rgbStr(inkG.c) : (bgL > .3 ? '#1d1a16' : '#f6efe2');
+    // accent: the cover's most vivid colour that isn't the background or the lettering
+    const far = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    const accG = info.groups.filter(g => g.n > .01 && g.s > .35 && far(g.c, edge) > 70 && (!inkG || far(g.c, inkG.c) > 60)).sort((a, b2) => b2.s * b2.n - a.s * a.n)[0];
+    const acc = accG ? rgbStr(accG.c) : ink;
+    // style from the cover's character
+    let style;
+    if (w >= 3.1 * PPU && (b.title || '').split(/\s+/).length <= 4) style = 'stack';
+    else if (info.sat < .18 && info.contrast < .16) style = 'quiet';            // pale, calm, minimal covers
+    else if (info.contrast > .3 && info.sat < .3) style = 'heavy';            // stark, high-contrast covers
+    else if (info.busy >= 7 && info.sat > .35) style = 'block';               // colourful, busy covers
+    else if (dims.hard && info.mean < .25) style = 'classic';                 // dark literary hardbacks
+    else style = hashStr(b.id + 'st') % 2 ? 'cond' : 'classic';
+    typeSpine(x, w, h, b, style, ink, acc);
     wear(x, w, h, b, dims);
     if (dims.hard) hinges(x, w, h);
     spineShading(x, w, h); return c;
   }
+
   function spineFromDesign(b, dims, d) {
     const w = Math.max(20, Math.round(dims.t * PPU)), h = Math.round(dims.h * PPU);
     const c = cnv(w, h), x = c.getContext('2d');
