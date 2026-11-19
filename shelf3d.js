@@ -157,9 +157,9 @@ function aoSideCanvas() {   // inside face of a side wall: u = 0 front .. 1 back
   x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.6, .3)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.4, .2)); x.fillRect(0, 0, w, h); return c;
 }
-function aoFlatCanvas(a) {   // a shelf floor or ceiling seen from inside: canvas top = back wall
+function aoFlatCanvas(a, span = .55) {   // a shelf floor or ceiling seen from inside: canvas top = back wall
   const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
-  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(a, .55)); x.fillRect(0, 0, w, h);
+  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(a, span)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(a * .7, .12)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(a * .7, .12)); x.fillRect(0, 0, w, h); return c;
 }
@@ -839,7 +839,7 @@ export async function createShelf3D(el, opts) {
     const bm = woodMaterial(1, 77, 0, .86, 1);   // grain runs up the back, like the iBooks case   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
-    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false); const aoFloorTex = tex(aoFlatCanvas(.25), false), aoCeilTex = tex(aoFlatCanvas(.75), false);
+    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false); const aoFloorTex = tex(aoFlatCanvas(.72, .85), false)   /* shelf top darkens toward the back, like iBooks */, aoCeilTex = tex(aoFlatCanvas(.75), false);
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
       const innerW = visW - 2 * 1.2;   // between the side posts, so the corner shading is actually visible
