@@ -837,7 +837,7 @@ export async function createShelf3D(el, opts) {
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0); lampSpots.forEach(l => l.intensity = lamps ? .7 : 0); nightBooks();
     bounces.forEach(l => l.intensity = lamps ? .55 : .45);
-    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps; fill.intensity = 0; rake.intensity = lamps ? 0 : .35; hemi.intensity = lamps ? .1 : .3; hemi.color.set(0xffffff);   // bulbs on = night: room lights off, the shelf bulbs do the lighting
+    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps; fill.intensity = lamps ? .15 : 0; rake.intensity = lamps ? 0 : .35; hemi.intensity = lamps ? .1 : .3; hemi.color.set(0xffffff);   // bulbs on = night: room lights off, the shelf bulbs do the lighting
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .18 : 1); needs = true;
   }
   let woodSeed = 0;
