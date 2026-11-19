@@ -65,14 +65,17 @@ function pickAccent(bg, pal) { const b = rgb(bg); const far = pal.find(c => Math
 
 /* ---------- state ---------- */
 const S = { books: new Map(), mode: 'loading', sb: null, user: null, cfg: null, openId: null, lineIdx: null, note: '', view: pref.get('view', 'spines') };
-const CACHE = () => 'bookie:cache:' + (S.user?.id || 'local');
+const CACHE = () => 'bookie:cache:' + (S.shelf ? 'shelf:' + S.shelf.id : (S.user?.id || 'local'));
+const canEdit = () => S.mode !== 'shelf' || !!S.shelf?.key;
 function saveCache() { try { localStorage.setItem(CACHE(), JSON.stringify([...S.books.values()])) } catch { } }
 function loadCache() { try { JSON.parse(localStorage.getItem(CACHE()) || '[]').forEach(b => S.books.set(b.id, b)) } catch { } }
 
 /* ---------- sync ---------- */
 const pend = {}, running = {};
 function queueWrite(id) {
-  saveCache(); if (S.mode !== 'cloud') return;
+  saveCache();
+  if (S.mode === 'shelf') return shelfWrite(id);
+  if (S.mode !== 'cloud') return;
   pend[id] = true; if (running[id]) return; running[id] = true;
   (async () => {
     while (pend[id]) {
@@ -85,6 +88,73 @@ function queueWrite(id) {
     running[id] = false;
   })();
 }
+// ---- shelves without accounts: a public id to look, a secret key (kept on your devices) to edit ----
+const KEYS = 'bookie:keys';
+const getKey = id => { try { return JSON.parse(localStorage.getItem(KEYS) || '{}')[id] || null } catch { return null } };
+const setKey = (id, k) => { try { const m = JSON.parse(localStorage.getItem(KEYS) || '{}'); m[id] = k; localStorage.setItem(KEYS, JSON.stringify(m)) } catch { } };
+function shelfWrite(id) {
+  if (!S.shelf?.key) return;
+  pend[id] = true; if (running[id]) return; running[id] = true;
+  (async () => {
+    while (pend[id]) {
+      pend[id] = false; const b = S.books.get(id);
+      try {
+        const r = await fetch('/api/shelf?id=' + S.shelf.id, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Edit-Key': S.shelf.key }, body: JSON.stringify(b ? { put: [b] } : { del: [id] }) });
+        if (r.status === 403) { toast('This device can’t edit this shelf.'); break }
+        if (r.status === 413) { const j = await r.json().catch(() => ({})); toast(j.error || 'Too large to save.'); break }
+        if (!r.ok) throw 0;
+      } catch { toast('Couldn’t save — will retry when you’re back online.'); pend[id] = true; await new Promise(r => setTimeout(r, 8000)) }
+    }
+    running[id] = false;
+  })();
+}
+async function pullShelf() {
+  try {
+    const r = await fetch('/api/shelf?id=' + S.shelf.id, { cache: 'no-store' });
+    if (r.status === 404) { S.note = 'This shelf doesn’t exist.'; S.books = new Map(); refresh(); return }
+    const j = await r.json(), m = new Map(); (j.books || []).forEach(b => b && b.id && m.set(b.id, b));
+    for (const id of Object.keys(pend)) if (pend[id] || running[id]) { const b = S.books.get(id); b ? m.set(id, b) : m.delete(id) }
+    S.books = m; S.shelf.name = j.name || ''; S.note = ''; saveCache(); refresh();
+  } catch { S.note = 'Showing a saved copy — couldn’t reach the shelf.'; refresh() }
+}
+function startShelf(id) {
+  S.mode = 'shelf'; S.shelf = { id, key: getKey(id), home: id === S.cfg.homeShelf };
+  document.body.classList.toggle('readonly', !S.shelf.key);
+  loadCache(); refresh(); pullShelf();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pullShelf() });
+}
+async function makeOwnShelf() {
+  try {
+    const local = (() => { try { return JSON.parse(localStorage.getItem('bookie:cache:local') || '[]') } catch { return [] } })();
+    const r = await fetch('/api/shelf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ books: local }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || 'failed');
+    setKey(j.id, j.key); pref.set('myShelf', j.id);
+    location.href = '/s/' + j.id;
+  } catch (e) { toast(e.message && e.message !== 'failed' ? e.message : 'Couldn’t make a shelf — try again.') }
+}
+const viewLink = () => S.shelf?.home ? location.origin + '/' : location.origin + '/s/' + S.shelf.id;
+const editLink = () => location.origin + '/s/' + S.shelf.id + '#key=' + S.shelf.key;
+function loadQR() { return window.QRCode ? Promise.resolve() : new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; sc.onload = ok; sc.onerror = no; document.head.append(sc) }) }
+function deviceSheet() {
+  openSheet(body => {
+    body.innerHTML = `<h2>Open on another device</h2>
+      <p class="sub">Scan this on your other phone or computer. Anyone with this code can edit your shelf, so keep it to yourself.</p>
+      <div id="qr" style="display:grid;place-items:center;margin:14px 0;min-height:200px"></div>
+      <div class="actions"><button class="btn ghost" id="cp-edit" type="button">Copy private link</button></div>`;
+    loadQR().then(() => { new QRCode($('#qr', body), { text: editLink(), width: 200, height: 200, colorDark: '#1d1a16', colorLight: '#fbf8f1' }) }).catch(() => { $('#qr', body).textContent = 'Couldn’t draw the code — copy the link instead.' });
+    $('#cp-edit', body).onclick = () => navigator.clipboard.writeText(editLink()).then(() => toast('Private link copied.'), () => toast('Couldn’t copy.'));
+  });
+}
+function visitorSheet() {
+  openSheet((body, close) => {
+    body.innerHTML = `<h2>Want a shelf of your own?</h2>
+      <p class="sub">You’re looking at someone else’s bookshelf. Make your own in one tap, with no sign-up. It gets its own private link.</p>
+      <div class="actions"><button class="btn ghost" id="v-no" type="button">Just looking</button><button class="btn primary" id="v-yes" type="button">Make my shelf</button></div>`;
+    $('#v-no', body).onclick = close;
+    $('#v-yes', body).onclick = e => { e.target.disabled = true; e.target.textContent = 'Making…'; makeOwnShelf() };
+  });
+}
+
 // Ask Claude (on the server) to design each spine from its real cover, once per book.
 const spineTried = new Set(); let spineBusy = false;
 async function designSpines() {
@@ -238,7 +308,14 @@ function moreSheet() {
         ${S.note ? `<p class="hint" style="margin:6px 0 0">${esc(S.note)}</p>` : ''}
         ${pullHTML() || '<p class="sub" style="margin-top:14px">Lines you keep will turn up here at random.</p>'}
         ${books.length ? statsHTML() : ''}
+        ${S.mode === 'shelf' && S.shelf.key ? `<div class="share-box"><span class="lab">Share your shelf</span><p class="hint">Anyone with this link can look at your books and lines, but not change them.</p>
+          <div class="actions" style="justify-content:flex-start;margin-top:10px"><button class="btn ghost" id="cp-view" type="button">Copy share link</button><button class="btn ghost" id="dev" type="button">Open on another device</button></div></div>` : ''}
+        ${S.mode === 'shelf' && !S.shelf.key ? '<div class="share-box"><button class="btn primary" id="mk" type="button">Make a shelf of your own</button></div>' : ''}
+        ${S.mode === 'local' && S.cfg?.store ? '<div class="share-box"><span class="lab">Keep your shelf safe</span><p class="hint">Right now your books live only in this browser. Give them a private link to use them on any device.</p><div class="actions" style="justify-content:flex-start;margin-top:10px"><button class="btn primary" id="mk" type="button">Save my shelf online</button></div></div>' : ''}
         ${S.mode === 'cloud' ? '<button class="signout" id="signout">Sign out</button>' : ''}`;
+      const cv = $('#cp-view', body); if (cv) cv.onclick = () => navigator.clipboard.writeText(viewLink()).then(() => toast('Share link copied.'), () => toast('Couldn’t copy.'));
+      const dv = $('#dev', body); if (dv) dv.onclick = () => { close(); deviceSheet() };
+      const mk = $('#mk', body); if (mk) mk.onclick = () => { mk.disabled = true; mk.textContent = 'Making…'; makeOwnShelf() };
       const an = $('#another', body); if (an) an.onclick = () => { const n = allLines().length; let i; do { i = Math.floor(Math.random() * n) } while (n > 1 && i === S.lineIdx); S.lineIdx = i; draw() };
       const bq = $('.pull blockquote', body); if (bq) bq.onclick = () => { close(); openDetail(bq.dataset.open) };
       const so = $('#signout', body); if (so) so.onclick = () => { close(); confirmSheet('Sign out?', 'Your shelf stays safe in your account.', 'Sign out', async () => { await S.sb.auth.signOut(); try { localStorage.removeItem(CACHE()) } catch { } location.reload() }) };
@@ -257,6 +334,7 @@ function coverHTML(b, cls = 'cover') {
 function openDetail(id) { S.openId = id; renderDetail(); const d = $('#detail'); d.scrollTop = 0; d.setAttribute('aria-hidden', 'false'); requestAnimationFrame(() => d.classList.add('open')); shelf3d?.focus(id) }
 function closeDetail() { shelf3d?.pushBack(); const d = $('#detail'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); S.openId = null; setTimeout(() => { if (!S.openId) d.innerHTML = '' }, 400) }
 function renderDetail() {
+  $('#detail').classList.toggle('ro', !canEdit());
   const b = S.books.get(S.openId), d = $('#detail');
   if (!b) { if (S.openId) closeDetail(); return }
   const { bg } = colorsOf(b);
@@ -599,7 +677,7 @@ function renderGate() {
 }
 
 /* ---------- boot ---------- */
-$('#fab').onclick = () => bookSheet();
+$('#fab').onclick = () => canEdit() ? bookSheet() : visitorSheet();
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { const w = $$('.sheet-wrap.open').pop(); if (w) w.querySelector('.scrim').click(); else if (S.openId) closeDetail() } });
 
 async function startCloud(session) {
@@ -609,9 +687,17 @@ async function startCloud(session) {
 (async () => {
   const demo = new URLSearchParams(location.search).has('demo');
   try { S.cfg = demo ? null : await (await fetch('api/config')).json() } catch { S.cfg = null }
+  if (S.cfg?.store) {
+    const m = location.pathname.match(/^\/s\/([a-z0-9]{8,24})\/?$/);
+    const hk = location.hash.match(/key=([A-Za-z0-9]{20,64})/);
+    if (m && hk) { setKey(m[1], hk[1]); pref.set('myShelf', m[1]); history.replaceState(null, '', location.pathname) }
+    const id = m ? m[1] : (S.cfg.homeShelf || null);
+    if (id) { startShelf(id); return }
+    const mine = pref.get('myShelf', ''); if (mine) { location.replace('/s/' + mine); return }
+  }
   if (!S.cfg?.supabaseUrl) {
     S.mode = 'local'; loadCache();
-    S.note = demo ? 'Demo mode — saving in this browser only.' : 'Preview — saving in this browser only. Sign-in and sync arrive with the Vercel version.';
+    S.note = demo ? 'Demo mode — saving in this browser only.' : 'Your books are saved in this browser only.';
     refresh(); designSpines(); return;
   }
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');

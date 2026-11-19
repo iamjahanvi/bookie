@@ -332,3 +332,9 @@ body.home-on{background:#a8763f}
 body.has3d .detail .dbar{background:none;pointer-events:none}
 body.has3d .detail .dbar .iconbtn{pointer-events:auto}
 body.has3d .detail .hero{margin-top:-30px}
+
+/* ---------- looking at someone else's shelf: no editing controls ---------- */
+.detail.ro #d-edit,.detail.ro #d-add,.detail.ro .danger,.detail.ro [data-a=edit]{display:none}
+.detail.ro .seg,.detail.ro #d-fin{pointer-events:none}
+.detail.ro #d-fin:placeholder-shown,.detail.ro .seg button:not(.on){opacity:.45}
+.share-box{margin-top:26px;padding-top:14px;border-top:.5px solid var(--rule)}
