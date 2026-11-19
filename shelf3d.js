@@ -139,11 +139,18 @@ function clothCanvas(seed = 3) {
   }
   x.putImageData(im, 0, 0); return c;
 }
-function aoCanvas() {
+function aoCanvas() {   // back of a compartment: dark under the shelf above, into both corners, and a little at the bottom
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
-  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(40,20,5,0.72)'); g.addColorStop(.1, 'rgba(40,20,5,0.29)'); g.addColorStop(.32, 'rgba(0,0,0,0)'); g.addColorStop(.6, 'rgba(30,15,5,0.06)'); g.addColorStop(.9, 'rgba(30,15,5,0.20)'); g.addColorStop(1, 'rgba(30,15,5,0.38)');
+  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(35,18,5,.78)'); g.addColorStop(.12, 'rgba(35,18,5,.36)'); g.addColorStop(.4, 'rgba(0,0,0,0)'); g.addColorStop(.75, 'rgba(30,15,5,0)'); g.addColorStop(.93, 'rgba(30,15,5,.16)'); g.addColorStop(1, 'rgba(30,15,5,.34)');
   x.fillStyle = g; x.fillRect(0, 0, w, h);
-  g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(30,15,5,0.65)'); g.addColorStop(.07, 'rgba(30,15,5,0.17)'); g.addColorStop(.18, 'rgba(0,0,0,0)'); g.addColorStop(.82, 'rgba(0,0,0,0)'); g.addColorStop(.93, 'rgba(30,15,5,0.17)'); g.addColorStop(1, 'rgba(30,15,5,0.65)');
+  g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(30,15,5,.62)'); g.addColorStop(.06, 'rgba(30,15,5,.3)'); g.addColorStop(.2, 'rgba(0,0,0,0)'); g.addColorStop(.8, 'rgba(0,0,0,0)'); g.addColorStop(.94, 'rgba(30,15,5,.3)'); g.addColorStop(1, 'rgba(30,15,5,.62)');
+  x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
+}
+function aoSideCanvas() {   // inside face of a side wall: darkest in the back corner, fading toward the front edge
+  const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
+  let g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.45, 'rgba(30,15,5,.1)'); g.addColorStop(.85, 'rgba(30,15,5,.36)'); g.addColorStop(1, 'rgba(30,15,5,.55)');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(30,15,5,.4)'); g.addColorStop(.18, 'rgba(0,0,0,0)');
   x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
 }
 function pagesCanvas() {
@@ -437,7 +444,10 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col *= 1. - fine * .03;
   col = mix(col, cL * .6, pore * .22);
   float fleck = smoothstep(.9, .97, wn(vec3(p.x * .45 + 3., p.yz * 2.6)));   // the odd small dark fleck
-  col = mix(col, cL * .75, fleck * .45);
+  col = mix(col, vec3(.4, .19, .06), fleck * .5);                  // tiny pin knots, warm brown
+  // natural imperfections: sparse orange mineral streaks, drawn out along the grain and broken up
+  float mk = smoothstep(.8, .93, wn(vec3(p.x * .14 + 11., p.yz * 1.1))) * smoothstep(.4, .75, wn(vec3(p.x * .8 + 4., p.yz * 5.)));
+  col = mix(col, vec3(.48, .23, .07), mk * .7);
   col *= mix(.18, 1., seam) * uTone;
   hgt = -late * .18 - pore * .22 + fibre * .06 - (1. - seam) * 2.5;
   rgh = .34 + late * .06 + pore * .12 - (fibre - .5) * .05 + (streak - .5) * .06;
@@ -791,11 +801,18 @@ export async function createShelf3D(el, opts) {
     const bm = woodMaterial(1, 77, 0, .86);   // grain runs up the back, like the iBooks case   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
-    const aoTex = tex(aoCanvas(), false);
+    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false);
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
-      const ao = new THREE.Mesh(new THREE.PlaneGeometry(visW * ((camera.position.z + DEPTH) / camera.position.z), HC), new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }));
+      const innerW = visW - 2 * 1.2;   // between the side posts, so the corner shading is actually visible
+      const ao = new THREE.Mesh(new THREE.PlaneGeometry(innerW, HC), new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }));
       ao.position.set(0, base + HC / 2, -DEPTH + .05); caseGroup.add(ao);
+      [-1, 1].forEach(sgn => {
+        const sm = new THREE.MeshBasicMaterial({ map: aoSideTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+        const side = new THREE.Mesh(new THREE.PlaneGeometry(DEPTH, HC), sm);
+        side.rotation.y = sgn < 0 ? Math.PI / 2 : -Math.PI / 2; if (sgn > 0) side.scale.x = -1;   // dark end always at the back
+        side.position.set(sgn * (innerW / 2 - .03), base + HC / 2, -DEPTH / 2); caseGroup.add(side);
+      });
     }
     // boards
     const bw = W;
