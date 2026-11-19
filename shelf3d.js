@@ -435,7 +435,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 `;
 let WOOD_ENV = null;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .4, metalness: 0 });
+  const m = new THREE.MeshStandardMaterial({ color: 0xffe0bc, roughness: .4, metalness: 0 });   // warmth lives in the wood, not the light
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
@@ -529,13 +529,13 @@ export async function createShelf3D(el, opts) {
   }, undefined, () => res(false)));
   const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 2000);
 
-  const hemi = new THREE.HemisphereLight(0xfff4e4, 0xb07a44, 0.3); scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xffe4c4, 2.7); key.castShadow = true;
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xe6dccf, 0.3); scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xfffaf4, 2.7); key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 5; key.shadow.blurSamples = 8; key.shadow.intensity = .42;
   scene.add(key, key.target);
   const bounces = [];
-  const fill = new THREE.DirectionalLight(0xffd6a2, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
-  const rake = new THREE.DirectionalLight(0xffd6a2, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
+  const fill = new THREE.DirectionalLight(0xfffaf4, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
+  const rake = new THREE.DirectionalLight(0xfffaf4, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
   const tex = (canvas, srgb = true, rep) => { const t = new THREE.CanvasTexture(canvas); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; if (rep) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; } return t; };
@@ -706,7 +706,7 @@ export async function createShelf3D(el, opts) {
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0);
     bounces.forEach(l => l.intensity = lamps ? .55 : .45);
-    key.intensity = lamps ? 1.5 : 3.0; fill.intensity = lamps ? .22 : .32; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xffc890 : 0xfff4e4);
+    key.intensity = lamps ? 1.5 : 3.0; fill.intensity = lamps ? .22 : .32; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
