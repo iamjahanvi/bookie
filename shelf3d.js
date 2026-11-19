@@ -416,7 +416,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   float r = length(q.yz - vec2(2., -34.)) * 5.2;                   // distance from the pith
   // Anti-aliasing: every detail fades out once it's finer than a couple of screen pixels,
   // so the grain stays still instead of shimmering when the view shifts a fraction of a pixel.
-  float fw = length(fwidth(p.yz)), rw = fwidth(r);
+  float fw = length(fwidth(p.yz)) * .55, rw = fwidth(r) * .55;   // baked: keep detail up to the texture's limit, mipmaps do the rest
   float aF = 1. - smoothstep(.12, .45, fw * 14.), aN = 1. - smoothstep(.12, .45, fw * 26.), aP = 1. - smoothstep(.08, .35, fw * 40.);
   float ring = fract(r), rid = floor(r);
   float yr = wh13(vec3(rid, 7., 3.));                              // every year grew differently
@@ -441,15 +441,73 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 }
 `;
 let WOOD_ENV = null;
+// The grain is baked once into two mipmapped textures, so the GPU filters it like a photo:
+// no shimmer or crawling at any size, angle or tilt.  A = faces looking across the log
+// (fronts, back panel), B = faces looking down onto it (shelf tops, post sides).
+const WB = { A: { u0: -64, lu: 128, v0: -85, lv: 170, w: 1024, h: 4096, c: 0 },
+             B: { u0: -64, lu: 128, v0: -26, lv: 64, w: 1024, h: 1536, c: 1 } };
+let WOOD_A = null, WOOD_B = null;
+function bakeWood(renderer) {
+  if (WOOD_A) return;
+  const cap = renderer.capabilities.maxTextureSize || 4096;
+  const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uAxis: { value: 0 }, uSeed: { value: new THREE.Vector3() }, uPlank: { value: 0 }, uTone: { value: 1 },
+                uRect: { value: new THREE.Vector4() }, uSlice: { value: 0 }, uMode: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; varying vec3 vWoodP; void main(){ vUv = uv; vWoodP = vec3(0.); gl_Position = vec4(position.xy, 0., 1.); }',
+    fragmentShader: WOOD_GLSL + `
+      uniform vec4 uRect; uniform float uSlice; uniform float uMode; varying vec2 vUv;
+      void main(){
+        float u = uRect.x + vUv.x * uRect.y, v = uRect.z + vUv.y * uRect.w;
+        vec3 P = uMode < .5 ? vec3(u, v, uSlice) : vec3(u, uSlice, v);
+        vec3 col; float hgt; float rgh; woodEval(P, col, hgt, rgh);
+        gl_FragColor = vec4(sqrt(clamp(col, 0., 1.)), clamp(hgt * 1.5 + .7, 0., 1.));
+      }`,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false,
+  });
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const out = [];
+  for (const [mode, d] of [[0, WB.A], [1, WB.B]]) {
+    const w = Math.min(d.w, cap), h = Math.min(d.h, cap);
+    const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
+      wrapS: THREE.MirroredRepeatWrapping, wrapT: THREE.MirroredRepeatWrapping });
+    rt.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    mat.uniforms.uRect.value.set(d.u0, d.lu, d.v0, d.lv); mat.uniforms.uSlice.value = d.c; mat.uniforms.uMode.value = mode;
+    renderer.setRenderTarget(rt); renderer.render(scene, cam); out.push(rt.texture);
+  }
+  renderer.setRenderTarget(null); mat.dispose();
+  [WOOD_A, WOOD_B] = out;
+}
+const WOOD_SAMPLE = /* glsl */`
+uniform float uAxis; uniform vec3 uSeed; uniform float uTone;
+uniform sampler2D uWoodA, uWoodB; uniform vec4 uRA, uRB;
+varying vec3 vWoodP; varying vec3 vWoodN;
+vec4 wTex(sampler2D t, vec4 r, vec2 uv){ return texture2D(t, (uv - r.xz) / r.yw); }
+void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
+  vec3 p = (uAxis < .5 ? P.xyz : P.yxz) + uSeed;
+  vec3 n = abs(uAxis < .5 ? vWoodN.xyz : vWoodN.yxz);
+  vec3 w = pow(n, vec3(8.)); w /= (w.x + w.y + w.z + 1e-5);
+  vec4 s = vec4(0.);
+  if (w.z > .002) s += w.z * wTex(uWoodA, uRA, p.xy);         // looking across the log
+  if (w.y > .002) s += w.y * wTex(uWoodB, uRB, p.xz);         // looking down onto it
+  if (w.x > .002) s += w.x * wTex(uWoodA, uRA, p.zy);         // end grain
+  col = s.rgb * s.rgb * uTone;
+  hgt = (s.a - .7) / 1.5;
+  rgh = .36 - hgt * .3;
+}
+`;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
   const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.55, 1.25, .9);   // light maple; the light stays white so books keep true colours
   { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
+    sh.uniforms.uWoodA = { value: WOOD_A }; sh.uniforms.uWoodB = { value: WOOD_B };
+    sh.uniforms.uRA = { value: new THREE.Vector4(WB.A.u0, WB.A.lu, WB.A.v0, WB.A.lv) }; sh.uniforms.uRB = { value: new THREE.Vector4(WB.B.u0, WB.B.lu, WB.B.v0, WB.B.lv) };
     sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
-    sh.vertexShader = 'varying vec3 vWoodP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWoodP = position;');
-    sh.fragmentShader = WOOD_GLSL + sh.fragmentShader
+    sh.vertexShader = 'varying vec3 vWoodP; varying vec3 vWoodN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWoodP = position; vWoodN = normal;');
+    sh.fragmentShader = WOOD_SAMPLE + sh.fragmentShader
       .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol * diffuse;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(wR, .25, 1.);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -457,7 +515,7 @@ function woodMaterial(axis, seed, plank = 0, tone = 1) {
     vec3 r1 = cross(wdy, normal), r2 = cross(normal, wdx); float det = dot(wdx, r1);
     normal = normalize(abs(det) * normal - .03 * sign(det) * (hx * r1 + hy * r2)); }`);
   };
-  m.customProgramCacheKey = () => 'bookie-wood-std';
+  m.customProgramCacheKey = () => 'bookie-wood-baked';
   return m;
 }
 
@@ -516,6 +574,7 @@ export async function createShelf3D(el, opts) {
   renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
   el.appendChild(renderer.domElement);
+  bakeWood(renderer);
 
   const scene = new THREE.Scene(); scene.background = new THREE.Color('#a8763f');
   const pmrem = new THREE.PMREMGenerator(renderer);
