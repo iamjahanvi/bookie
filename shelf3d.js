@@ -545,7 +545,8 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col *= 1. + (g - .5) * .05;
   const float SS = 1. / 22.;                                    // light scratches, random angles, filtered so they never crawl
   float sc = uScr > 0. ? uScr * texture2D(uScratch, p.xy * SS + .31).r : 0.;   // only the back wall is scuffed
-  col = mix(col, col * 1.3 + .015, sc);                                   // fine grain that belongs to the wood
+  col = mix(col, col * 1.3 + .015, sc);
+  if (uScr > 0.) col = mix(col, vec3(.42, .265, .13) * uTone, .42) * 1.07;   // back panel: a soft wash over the grain, like the iBooks shelf                                   // fine grain that belongs to the wood
   hgt = (s.a - .7) / 1.5;
   rgh = .36 - hgt * .3;
 }
