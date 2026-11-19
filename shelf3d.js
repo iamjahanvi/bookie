@@ -452,13 +452,13 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col = mix(col, cG, smoothstep(.5, .8, streak) * .4);
   col = mix(col, cW, smoothstep(.5, .2, streak) * .35);
   col *= .94 + fibre * .12;
-  float stri = wn(vec3(p.x * .1, p.yz * 4.6)) * .7 + wn(vec3(p.x * .16 + 9., p.yz * 6.5)) * .3;   // dense fine striations, like iBooks maple
-  col *= .88 + stri * .24;                                         // hairline fibres kept faint: straight thin lines crawl on screens
+  float stri = wn(vec3(p.x * .1, p.yz * 5.8)) * .65 + wn(vec3(p.x * .16 + 9., p.yz * 8.)) * .35;   // dense fine striations, like iBooks maple
+  col *= .82 + stri * .36;                                         // hairline fibres kept faint: straight thin lines crawl on screens
   col *= 1. - fine * .06;
   col = mix(col, cL * .6, pore * .22);
                  // tiny pin knots, warm brown
   col *= mix(.18, 1., seam) * uTone;
-  hgt = -late * .18 - pore * .22 + fibre * .06 - (1. - seam) * 2.5;
+  hgt = -late * .18 - pore * .22 + fibre * .06 + (stri - .5) * .22 - (1. - seam) * 2.5;   // striations have relief: the surface feels coarse
   rgh = .34 + late * .06 + pore * .12 - (fibre - .5) * .05 + (streak - .5) * .06;
 }
 `;
