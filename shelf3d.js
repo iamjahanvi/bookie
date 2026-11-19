@@ -601,7 +601,7 @@ export async function createShelf3D(el, opts) {
     const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return false;
     renderer.setSize(w, h, false);
     const d = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)), yc = H * CAM_Y, fullH = h * (2 * yc / H);
-    const Y0 = .3, TOP = 2.9, dock = document.querySelector('.dock');   // TOP: the thick top board and a sliver above it
+    const Y0 = .3, TOP = .35, dock = document.querySelector('.dock');   // TOP: the thick top board and a sliver above it
     let need = 110;   // px from the bottom of the screen to the bottom of the lowest shelf
     if (dock) { const r = dock.getBoundingClientRect(), gap = Math.max(14, innerHeight - r.bottom); need = (innerHeight - r.top) + gap - 11; }
     const f = need / h, rest = BT + 3 * (HC + BT) + TOP;
@@ -723,7 +723,7 @@ export async function createShelf3D(el, opts) {
     const bw = W;
     const boardYs = [PL + BT / 2]; for (let j = 1; j <= 3; j++) boardYs.push(PL + BT + j * (HC + BT) - BT / 2);
     boardYs.forEach((y, j) => {
-      const isTop = j === 3; const thick = isTop ? BT * 2.2 : BT;
+      const isTop = j === 3; const thick = BT;   // the top is the same thickness as every shelf
       const m = new THREE.Mesh(RBox(bw, thick, DEPTH + 1, thick * .32), boardMat(bw, DEPTH));
       m.position.set(0, isTop ? y + thick / 2 - BT / 2 : y, -DEPTH / 2 + .5); m.castShadow = m.receiveShadow = true; caseGroup.add(m);
       // a slightly rounded lip on the front edge
