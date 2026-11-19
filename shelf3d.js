@@ -435,14 +435,14 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 `;
 let WOOD_ENV = null;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshStandardMaterial({ color: 0xffe0bc, roughness: .4, metalness: 0 });   // warmth lives in the wood, not the light
+  const m = new THREE.MeshStandardMaterial({ color: 0xd49c6c, roughness: .34, metalness: 0 });   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
     sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
     sh.vertexShader = 'varying vec3 vWoodP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWoodP = position;');
     sh.fragmentShader = WOOD_GLSL + sh.fragmentShader
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol * diffuse;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(wR, .25, 1.);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 wdx = dFdx(-vViewPosition), wdy = dFdy(-vViewPosition); float hx = dFdx(wH), hy = dFdy(wH);
