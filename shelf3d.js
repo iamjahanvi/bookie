@@ -657,7 +657,9 @@ export async function createShelf3D(el, opts) {
   key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 12; key.shadow.intensity = .72;   // books cast real, soft shadows
   scene.add(key, key.target);
   const bounces = [];
-  const fill = new THREE.DirectionalLight(0xfff6ea, 0); fill.position.set(0, H * .5, 220); scene.add(fill);   // light from the screen side, only when the shelf bulbs are on
+  const fillL = new THREE.DirectionalLight(0xfff6ea, 0), fillR = new THREE.DirectionalLight(0xfff6ea, 0);   // light from the screen side, angled in so it reaches the side walls too
+  fillL.position.set(-150, H * .5, 200); fillR.position.set(150, H * .5, 200); scene.add(fillL, fillR);
+  const fill = { set intensity(v) { fillL.intensity = fillR.intensity = v * .75; } };
   const rake = new THREE.DirectionalLight(0xfffaf4, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
@@ -826,7 +828,7 @@ export async function createShelf3D(el, opts) {
     for (const r of rows) { const free = visW - 3.7 - r.contentW; if (free >= 12 && (!best || free > best.free + .5)) best = { r, free }; }
     if (SHOW_PLANT && best) plantGroup.add(buildPlant(visW / 2 - 1.2 - 3.4, best.r.base));
   }
-  const WARM = new THREE.Color(0xffffff);   // neutral: books keep their true colours under the bulbs
+  const WARM = new THREE.Color(0xfff0dc);   // a hint of bulb warmth; books keep their true colours
   function nightBooks() {   // at night the bulbs light the books: a warm lift on covers and spines, not on the wood
     booksGroup.traverse(o => { if (!o.isMesh) return; [].concat(o.material).forEach(m => {
       if (!m || !m.isMeshStandardMaterial) return;
@@ -837,7 +839,7 @@ export async function createShelf3D(el, opts) {
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0); lampSpots.forEach(l => l.intensity = lamps ? .7 : 0); nightBooks();
     bounces.forEach(l => l.intensity = lamps ? .55 : .45);
-    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps; fill.intensity = lamps ? .15 : 0; rake.intensity = lamps ? 0 : .35; hemi.intensity = lamps ? .1 : .3; hemi.color.set(0xffffff);   // bulbs on = night: room lights off, the shelf bulbs do the lighting
+    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps; fill.intensity = lamps ? .38 : 0; rake.intensity = lamps ? 0 : .35; hemi.intensity = lamps ? .1 : .3; hemi.color.set(0xffffff);   // bulbs on = night: room lights off, the shelf bulbs do the lighting
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .18 : 1); needs = true;
   }
   let woodSeed = 0;
@@ -950,7 +952,7 @@ export async function createShelf3D(el, opts) {
       }
       // one real, soft spotlight per shelf, from the front pucks down and back: it lights the covers and spines (no shadows, so it stays cheap)
       for (const sx of [-1, 1]) {   // two soft bulbs per shelf, from the front lip, angled at the book faces
-        const sp = new THREE.SpotLight(0xfff6ec, 0, 0, .95, .9, 0);
+        const sp = new THREE.SpotLight(0xffe8cc, 0, 0, .95, .9, 0);
         sp.position.set(sx * visW * .25, base + HC - .4, 5); sp.target.position.set(sx * visW * .25, base + HC * .3, -DEPTH * .55);
         scene.add(sp, sp.target); lampSpots.push(sp);
       }
