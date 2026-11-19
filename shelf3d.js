@@ -549,7 +549,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 }
 `;
 function woodMaterial(axis, seed, plank = 0, tone = 1, scratch = 0) {
-  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.037, .986, .85);   // blond maple, a shade deeper; the light stays white so books keep true colours
+  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(2.42, 2.72, 2.9);   // blond maple, a shade deeper; the light stays white so books keep true colours
   { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
@@ -828,7 +828,7 @@ export async function createShelf3D(el, opts) {
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
-  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, axis ? .8 : .5); }   // shelf boards catch more light, so they're toned to match the back
+  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, axis ? .23 : .78); }   // shelf boards catch more light, so they're toned to match the back
   function buildCase() {
     caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { if (m === ironMat || m === brassEdge) return; m.map && m.map.dispose?.(); m.dispose(); }); } });
     caseGroup.clear();
