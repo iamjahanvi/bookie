@@ -435,7 +435,8 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 `;
 let WOOD_ENV = null;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshStandardMaterial({ color: 0xd49c6c, roughness: .34, metalness: 0 });   // deep warm brown; the light stays white so books keep true colours
+  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.55, 1.25, .9);   // light maple; the light stays white so books keep true colours
+  { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
