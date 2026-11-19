@@ -618,7 +618,7 @@ const sfx = (() => {
 /* ---------- the bookcase ---------- */
 export async function createShelf3D(el, opts) {
   const { colorsOf, onPick, coverSrc, onDismiss } = opts;
-  let lamps = !!opts.lamps, envLoaded = false; const lampObjs = [], lampPucks = []; let anchors = opts.anchors || {}; const anchorBoxes = [];
+  let lamps = !!opts.lamps, envLoaded = false; const lampObjs = [], lampPucks = [], lampSpots = []; let anchors = opts.anchors || {}; const anchorBoxes = [];
   try { await Promise.all(['500 40px Fraunces', '800 100px Fraunces', '500 20px "IBM Plex Mono"'].map(f => document.fonts.load(f))); } catch { }
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -826,11 +826,19 @@ export async function createShelf3D(el, opts) {
     for (const r of rows) { const free = visW - 3.7 - r.contentW; if (free >= 12 && (!best || free > best.free + .5)) best = { r, free }; }
     if (SHOW_PLANT && best) plantGroup.add(buildPlant(visW / 2 - 1.2 - 3.4, best.r.base));
   }
+  const WARM = new THREE.Color(0xffd2a0);
+  function nightBooks() {   // at night the bulbs light the books: a warm lift on covers and spines, not on the wood
+    booksGroup.traverse(o => { if (!o.isMesh) return; [].concat(o.material).forEach(m => {
+      if (!m || !m.isMeshStandardMaterial) return;
+      if (!m.userData.night) { m.userData.night = true; if (m.map) { m.emissiveMap = m.map; m.emissive = WARM.clone(); } else m.emissive = m.color.clone().multiply(WARM); m.needsUpdate = true; }
+      m.emissiveIntensity = lamps ? (m.map ? .42 : .26) : 0;
+    }); });
+  }
   function applyLamps() {
-    lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0);
+    lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0); lampSpots.forEach(l => l.intensity = lamps ? .7 : 0); nightBooks();
     bounces.forEach(l => l.intensity = lamps ? .55 : .45);
-    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps; fill.intensity = 0; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);   // shelf lights on = room key light off, screen-side light on
-    scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
+    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps; fill.intensity = 0; rake.intensity = lamps ? 0 : .35; hemi.intensity = lamps ? .1 : .3; hemi.color.set(lamps ? 0xffe2c0 : 0xffffff);   // bulbs on = night: room lights off, the shelf bulbs do the lighting
+    scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .18 : 1); needs = true;
   }
   let woodSeed = 0;
   function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, .8); }   // shelf boards catch more light, so they're toned to match the back
@@ -922,7 +930,7 @@ export async function createShelf3D(el, opts) {
       plate.position.set(0, y, 1.48); plate.castShadow = true; caseGroup.add(plate);
     });
     // downlights under each shelf
-    lampObjs.length = 0; lampPucks.length = 0;
+    lampObjs.length = 0; lampPucks.length = 0; lampSpots.forEach(l => { scene.remove(l, l.target); l.dispose?.(); }); lampSpots.length = 0;
     const pc = cnv(256, 256), px = pc.getContext('2d'); px.fillStyle = '#000'; px.fillRect(0, 0, 256, 256);
     px.save(); px.translate(128, 0); px.scale(.5, 1); const pg = px.createRadialGradient(0, -6, 4, 0, -6, 235);
     pg.addColorStop(0, 'rgba(255,236,200,1)'); pg.addColorStop(.12, 'rgba(255,214,150,.75)'); pg.addColorStop(.5, 'rgba(255,180,100,.2)'); pg.addColorStop(1, 'rgba(0,0,0,0)');
@@ -932,15 +940,20 @@ export async function createShelf3D(el, opts) {
     const puckMat = new THREE.MeshStandardMaterial({ color: '#d8c7a8', roughness: .6, emissive: '#ffb45e', emissiveIntensity: 0 }); lampPucks.push(puckMat);
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
-      const pool = new THREE.Mesh(new THREE.PlaneGeometry(visW * backScale, HC), new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .8 }));
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(visW * backScale, HC), new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .58 }));
       pool.position.set(0, base + HC / 2, -DEPTH + .12); pool.renderOrder = 1; caseGroup.add(pool); lampObjs.push(pool);
       for (let i = 0; i < nL; i++) {
         const lx = (-.5 + (i + .5) / nL) * visW * backScale;   // directly above its pool of light on the back panel
         // a small recessed puck light: brushed rim, frosted warm lens set slightly inside it
-        const rim = new THREE.Mesh(new THREE.CylinderGeometry(.5, .56, .14, 24), rimMat); rim.position.set(lx, base + HC - .07, -DEPTH + 1.6); caseGroup.add(rim);
-        const lens = new THREE.Mesh(new THREE.CircleGeometry(.36, 24), puckMat); lens.rotation.x = Math.PI / 2; lens.position.set(lx, base + HC - .15, -DEPTH + 1.6); caseGroup.add(lens);
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(.5, .56, .14, 24), rimMat); rim.position.set(lx, base + HC - .07, -3.2); caseGroup.add(rim);
+        const lens = new THREE.Mesh(new THREE.CircleGeometry(.36, 24), puckMat); lens.rotation.x = Math.PI / 2; lens.position.set(lx, base + HC - .15, -3.2); caseGroup.add(lens);
       }
-      // (no live point lights here: far too costly on phones)
+      // one real, soft spotlight per shelf, from the front pucks down and back: it lights the covers and spines (no shadows, so it stays cheap)
+      for (const sx of [-1, 1]) {   // two soft bulbs per shelf, from the front lip, angled at the book faces
+        const sp = new THREE.SpotLight(0xffc98a, 0, 0, .95, .9, 0);
+        sp.position.set(sx * visW * .25, base + HC - .4, 5); sp.target.position.set(sx * visW * .25, base + HC * .3, -DEPTH * .55);
+        scene.add(sp, sp.target); lampSpots.push(sp);
+      }
     }
     applyLamps();
     // light
@@ -1384,7 +1397,7 @@ export async function createShelf3D(el, opts) {
   function rebuild() {
     const pid = pulled?.userData.id, offs = rows.map(r => r.offset);
     tweens.length = 0; pulled = null;
-    buildCase(); buildBooks(); placeAnchors();
+    buildCase(); buildBooks(); nightBooks(); placeAnchors();
     rows.forEach((r, i) => setOffset(r, offs[i] ?? 0));
     const p = pid && findPivot(pid);
     if (p) { pulled = p; toHero(p, true); } else { dim.material.opacity = 0; dim.visible = false; }
@@ -1392,7 +1405,7 @@ export async function createShelf3D(el, opts) {
   }
   const ro = new ResizeObserver(() => { if (frame()) rebuild(); });
   ro.observe(el);
-  frame(); buildCase(); buildBooks(); placeAnchors();
+  frame(); buildCase(); buildBooks(); nightBooks(); placeAnchors();
   await Promise.race([envReady, new Promise(r => setTimeout(r, 2500))]);
   renderer.shadowMap.needsUpdate = true; renderer.render(scene, camera); loop();
 
