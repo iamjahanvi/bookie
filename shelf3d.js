@@ -583,7 +583,7 @@ export async function createShelf3D(el, opts) {
       if (b0 === null) { b0 = e.beta; g0 = e.gamma; }
       b0 += (e.beta - b0) * .0025; g0 += (e.gamma - g0) * .0025;        // slowly re-centre on however you hold the phone
       const c = v => Math.max(-1, Math.min(1, v / 12));
-      const nx = -c(e.gamma - g0), ny = -c(e.beta - b0);   // window effect: tilting the phone moves your viewpoint the other way
+      const nx = -c(e.gamma - g0), ny = c(e.beta - b0);   // left-right is mirrored for the window effect; up-down already felt right
       if (Math.abs(nx - tilt.tx) > .012) tilt.tx = nx; if (Math.abs(ny - tilt.ty) > .012) tilt.ty = ny;
     };
     const startOri = () => {
