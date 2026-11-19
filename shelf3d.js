@@ -141,9 +141,9 @@ function clothCanvas(seed = 3) {
 }
 function aoCanvas() {
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
-  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(40,20,5,.5)'); g.addColorStop(.1, 'rgba(40,20,5,.2)'); g.addColorStop(.32, 'rgba(0,0,0,0)'); g.addColorStop(.6, 'rgba(30,15,5,.04)'); g.addColorStop(.9, 'rgba(30,15,5,.14)'); g.addColorStop(1, 'rgba(30,15,5,.26)');
+  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(40,20,5,0.72)'); g.addColorStop(.1, 'rgba(40,20,5,0.29)'); g.addColorStop(.32, 'rgba(0,0,0,0)'); g.addColorStop(.6, 'rgba(30,15,5,0.06)'); g.addColorStop(.9, 'rgba(30,15,5,0.20)'); g.addColorStop(1, 'rgba(30,15,5,0.38)');
   x.fillStyle = g; x.fillRect(0, 0, w, h);
-  g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(30,15,5,.45)'); g.addColorStop(.07, 'rgba(30,15,5,.12)'); g.addColorStop(.18, 'rgba(0,0,0,0)'); g.addColorStop(.82, 'rgba(0,0,0,0)'); g.addColorStop(.93, 'rgba(30,15,5,.12)'); g.addColorStop(1, 'rgba(30,15,5,.45)');
+  g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(30,15,5,0.65)'); g.addColorStop(.07, 'rgba(30,15,5,0.17)'); g.addColorStop(.18, 'rgba(0,0,0,0)'); g.addColorStop(.82, 'rgba(0,0,0,0)'); g.addColorStop(.93, 'rgba(30,15,5,0.17)'); g.addColorStop(1, 'rgba(30,15,5,0.65)');
   x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
 }
 function pagesCanvas() {
@@ -429,13 +429,15 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   float pore = smoothstep(.83, .92, wn(vec3(p.x * 1.4, p.yz * 24.))) * (1. - .6 * late) * aP;   // open pores, drawn out along the grain
   float streak = wfbm(vec3(p.x * .01, p.yz * .3));               // long heartwood streaks
   vec3 cE = vec3(.43, .27, .135), cL = vec3(.31, .185, .085), cW = vec3(.52, .35, .18), cG = vec3(.36, .26, .16);
-  col = mix(cE, cL * .92, late * (.5 + .35 * yr));
+  col = mix(cE, cL * .92, late * (.3 + .25 * yr));   // calm, low-contrast figure
   col *= .9 + yr * .2;
   col = mix(col, cG, smoothstep(.5, .8, streak) * .4);
   col = mix(col, cW, smoothstep(.5, .2, streak) * .35);
   col *= .97 + fibre * .06;                                         // hairline fibres kept faint: straight thin lines crawl on screens
   col *= 1. - fine * .03;
   col = mix(col, cL * .6, pore * .22);
+  float fleck = smoothstep(.9, .97, wn(vec3(p.x * .45 + 3., p.yz * 2.6)));   // the odd small dark fleck
+  col = mix(col, cL * .75, fleck * .45);
   col *= mix(.18, 1., seam) * uTone;
   hgt = -late * .18 - pore * .22 + fibre * .06 - (1. - seam) * 2.5;
   rgh = .34 + late * .06 + pore * .12 - (fibre - .5) * .05 + (streak - .5) * .06;
@@ -499,7 +501,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 }
 `;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.55, 1.25, .9);   // light maple; the light stays white so books keep true colours
+  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.62, 1.6, 1.42);   // pale blond maple; the light stays white so books keep true colours
   { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
@@ -786,7 +788,7 @@ export async function createShelf3D(el, opts) {
     const W = visW * backScale + 8, BH = H * backScale + 20;
     // back panel
     woodSeed = 0;
-    const bm = woodMaterial(0, 77, 0, .84);   // tongue-and-groove back, grain running up
+    const bm = woodMaterial(1, 77, 0, .86);   // grain runs up the back, like the iBooks case   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
     const aoTex = tex(aoCanvas(), false);
