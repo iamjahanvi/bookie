@@ -405,7 +405,8 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   float seam = 1.;
   if (uPlank > 0.) {                                    // boards joined edge to edge, each from a different part of the tree
     float k = p.y / uPlank, id = floor(k), fk = fract(k);
-    seam = smoothstep(0., .014, fk) * smoothstep(1., .986, fk);
+    float sw = max(.014, fwidth(k) * 1.5);              // never sharper than a pixel
+    seam = smoothstep(0., sw, fk) * smoothstep(1., 1. - sw, fk);
     p += vec3(wh13(vec3(id, 1., 2.)) * 90., 0., wh13(vec3(id, 5., 3.)) * 30. + id * 2.7);
   }
   p += uSeed;
@@ -413,12 +414,18 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   q.yz += (wfbm(vec3(p.x * .018, p.yz * .14)) - .5) * 1.3;         // the trunk is never straight
   q.yz += (wn(vec3(p.x * .1, p.yz * .9)) - .5) * .06;
   float r = length(q.yz - vec2(2., -34.)) * 5.2;                   // distance from the pith
+  // Anti-aliasing: every detail fades out once it's finer than a couple of screen pixels,
+  // so the grain stays still instead of shimmering when the view shifts a fraction of a pixel.
+  float fw = length(fwidth(p.yz)), rw = fwidth(r);
+  float aF = 1. - smoothstep(.12, .45, fw * 14.), aN = 1. - smoothstep(.12, .45, fw * 26.), aP = 1. - smoothstep(.08, .35, fw * 40.);
   float ring = fract(r), rid = floor(r);
   float yr = wh13(vec3(rid, 7., 3.));                              // every year grew differently
-  float late = smoothstep(.45, .96, ring) * (1. - smoothstep(.96, 1., ring));   // darkens through the season, then starts again
-  float fibre = wn(vec3(p.x * .6, p.yz * 14.));
-  float fine = wn(vec3(p.x * 1.8, p.yz * 26.));
-  float pore = smoothstep(.83, .92, wn(vec3(p.x * 1.4, p.yz * 24.))) * (1. - .6 * late);   // open pores, drawn out along the grain
+  float re = clamp(rw * 1.5, .04, .5);                              // ring edge softens to at least a pixel wide
+  float late = smoothstep(.45, 1. - re, ring) * (1. - smoothstep(1. - re, 1., ring));
+  late = mix(.36, late, 1. - smoothstep(.25, .6, rw));             // rings too tight to draw blend to their average   // darkens through the season, then starts again
+  float fibre = mix(.5, wn(vec3(p.x * .6, p.yz * 14.)), aF);
+  float fine = mix(.5, wn(vec3(p.x * 1.8, p.yz * 26.)), aN);
+  float pore = smoothstep(.83, .92, wn(vec3(p.x * 1.4, p.yz * 24.))) * (1. - .6 * late) * aP;   // open pores, drawn out along the grain
   float streak = wfbm(vec3(p.x * .01, p.yz * .3));               // long heartwood streaks
   vec3 cE = vec3(.43, .27, .135), cL = vec3(.31, .185, .085), cW = vec3(.52, .35, .18), cG = vec3(.36, .26, .16);
   col = mix(cE, cL, late * (.26 + .3 * yr));
@@ -448,7 +455,7 @@ function woodMaterial(axis, seed, plank = 0, tone = 1) {
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 wdx = dFdx(-vViewPosition), wdy = dFdy(-vViewPosition); float hx = dFdx(wH), hy = dFdy(wH);
     vec3 r1 = cross(wdy, normal), r2 = cross(normal, wdx); float det = dot(wdx, r1);
-    normal = normalize(abs(det) * normal - .04 * sign(det) * (hx * r1 + hy * r2)); }`);
+    normal = normalize(abs(det) * normal - .03 * sign(det) * (hx * r1 + hy * r2)); }`);
   };
   m.customProgramCacheKey = () => 'bookie-wood-std';
   return m;
