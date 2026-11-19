@@ -1162,7 +1162,8 @@ export async function createShelf3D(el, opts) {
       const g = new THREE.Group(); booksGroup.add(g);
       const left = -visW / 2 + 1.2 + .35 + 0; let x = left; const items = [];
       // a small pile lying flat at the end of fuller shelves
-      const nStack = st !== 'reading' && list.length >= 6 ? (list.length >= 10 ? 3 : 2) : 0;
+      const faceOut = view === 'covers';
+      const nStack = !faceOut && st !== 'reading' && list.length >= 6 ? (list.length >= 10 ? 3 : 2) : 0;
       const standing = list.slice(0, list.length - nStack), stacked = list.slice(list.length - nStack);
       const sDims = standing.map(dimsOf);
       standing.forEach((b, i) => {
@@ -1170,9 +1171,14 @@ export async function createShelf3D(el, opts) {
         const hv = hashStr(b.id);
         mesh.position.set(dims.t / 2, dims.h / 2, 0);
         pivot.add(mesh);
+        if (faceOut) {   // cover facing out, books side by side, like a shop display
+          pivot.position.set(x + dims.d / 2, base, -4.2 - dims.t - ((hv >>> 4) % 6) * .08);
+          pivot.rotation.y = -Math.PI / 2 + ((hv % 5) - 2) * .01;
+        } else {
         pivot.position.set(x, base, -1.4 - dims.d / 2 - ((hv >>> 4) % 10) * .09);
         pivot.rotation.y = ((hv % 5) - 2) * .012;
         pivot.rotation.z = (((hv >>> 7) % 7) - 3) * .0035;   // a degree or so off upright
+        }
         // contact shading where this book meets its neighbours
         const zf = mesh.userData.front_z + .02, aw = Math.min(.55, dims.t * .3), aos = [];
         [[-1, sDims[i - 1]], [1, sDims[i + 1]]].forEach(([sg, nb]) => {
@@ -1182,10 +1188,11 @@ export async function createShelf3D(el, opts) {
           q.renderOrder = 2; mesh.add(q); aos.push(q);
         });
         mesh.userData.aos = aos;
+        if (faceOut) aos.forEach(q => q.visible = false);
         // tight, dark shadow right where the book stands; the cast shadow softens further out
         const cs = new THREE.Mesh(new THREE.PlaneGeometry(dims.t + 2.2, dims.d + 2.4), contactMat); geoms.push(cs.geometry);
         cs.rotation.x = -Math.PI / 2; cs.position.set(dims.t / 2, .025, 0); cs.renderOrder = 1; pivot.add(cs); pivot.userData.contact = cs;
-        x += dims.t + .02 + (hv % 9 === 0 ? .1 : 0);
+        x += faceOut ? dims.d + .9 : dims.t + .02 + (hv % 9 === 0 ? .1 : 0);
         pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone(), d: dims.d };
         g.add(pivot); items.push(pivot);
       });
@@ -1198,7 +1205,7 @@ export async function createShelf3D(el, opts) {
       }
       const stackW = stacked.length ? Math.max(...stacked.map(b => dimsOf(b).h)) + .8 : 0;
       // no bookends: when there is room, the last standing book leans on its neighbour
-      const willLean = standing.length > 1 && standW + stackW + 9 < visW - 4;
+      const willLean = !faceOut && standing.length > 1 && standW + stackW + 9 < visW - 4;
       if (willLean && stacked.length) x += sDims[standing.length - 1].h * Math.sin(.2) + .6;
       // the pile
       if (stacked.length) {

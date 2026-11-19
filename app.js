@@ -267,7 +267,13 @@ async function init3d() {
     lamp.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17h6M10 20h4M8.2 14.2A6 6 0 1 1 15.8 14.2c-.6.6-.8 1.2-.8 1.8H9c0-.6-.2-1.2-.8-1.8z"/></svg>' + sr('Shelf lights');
     more.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10 5 7 4.6 4 5.2v13c3-.6 6-.2 8 1.3 2-1.5 5-1.9 8-1.3v-13c-3-.6-6-.2-8 1.3zM12 6.5v13"/></svg>' + sr('Lines and stats');
     fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg>' + sr('Add a book');
-    [lamp, more, fab].forEach(n => { n.className = 'dk' + (n === fab ? ' dk-add' : ''); dock.append(n); });
+    const viewBtn = document.createElement('button'); viewBtn.type = 'button';
+    const ICON_COVERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3.5" y="5" width="7" height="10" rx="1"/><rect x="13.5" y="5" width="7" height="10" rx="1"/><path d="M3 19h18"/></svg>';
+    const ICON_SPINES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="4" y="5" width="3.2" height="13" rx=".6"/><rect x="8.4" y="7" width="3.2" height="11" rx=".6"/><rect x="12.8" y="4" width="3.2" height="14" rx=".6"/><path d="M17.4 18l2.6-11.5"/><path d="M3 20.5h18"/></svg>';
+    const paintView = () => { const c = S.view === 'covers'; viewBtn.innerHTML = (c ? ICON_SPINES : ICON_COVERS) + sr(c ? 'Show spines' : 'Show covers'); viewBtn.setAttribute('aria-pressed', c); viewBtn.title = c ? 'Show spines' : 'Show covers'; };
+    paintView();
+    viewBtn.onclick = () => { S.view = S.view === 'covers' ? 'spines' : 'covers'; pref.set('view', S.view); paintView(); closeDetail?.(); shelf3d.update([...S.books.values()], S.view); try { navigator.vibrate?.(8) } catch { } };
+    [lamp, viewBtn, more, fab].forEach(n => { n.className = 'dk' + (n === fab ? ' dk-add' : ''); dock.append(n); });
     document.body.append(dock); shelf3d.relayout();
     lamp.onclick = () => { const on = pref.get('lamps', '0') !== '1'; pref.set('lamps', on ? '1' : '0'); lamp.setAttribute('aria-pressed', on); shelf3d.setLamps(on); try { navigator.vibrate?.(8) } catch { } };
     lamp.setAttribute('aria-pressed', pref.get('lamps', '0') === '1');
@@ -280,7 +286,7 @@ function renderHome() {
   if (S.mode === 'loading') { app.innerHTML = ''; return }
   if (S.mode === 'gate') return;
   if (shelf3d && !document.body.contains(shelf3d.el)) { shelf3d.destroy(); shelf3d = null; shelf3dState = 'idle' }
-  S.view = 'spines';
+  S.view = pref.get('view', 'spines') === 'covers' ? 'covers' : 'spines';
   const books = [...S.books.values()];
   if (!$('#home')) {
     document.body.classList.add('home-on');
