@@ -601,16 +601,16 @@ export async function createShelf3D(el, opts) {
     const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return false;
     renderer.setSize(w, h, false);
     const d = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)), yc = H * CAM_Y, fullH = h * (2 * yc / H);
-    const Z = 1.06, Y0 = .3, dock = document.querySelector('.dock');
+    const Y0 = .3, TOP = 2.9, dock = document.querySelector('.dock');   // TOP: the thick top board and a sliver above it
     let need = 110;   // px from the bottom of the screen to the bottom of the lowest shelf
     if (dock) { const r = dock.getBoundingClientRect(), gap = Math.max(14, innerHeight - r.bottom); need = (innerHeight - r.top) + gap - 11; }
-    const f = need * Z / h;                                         // fraction of the case height the base must fill
-    PL = Math.max(9, Math.min(30, (f * (BT + 3 * (HC + BT)) + Y0) / (1 - f)));
+    const f = need / h, rest = BT + 3 * (HC + BT) + TOP;
+    PL = Math.max(9, Math.min(30, (f * rest + Y0) / (1 - f)));
     H = PL + BT + 3 * (HC + BT);
+    const winH = H + TOP - Y0;
     const d2 = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)); camBase.z = d2;
-    visW = H * (w / h);
-    const hw = visW / 2 / Z, hh = H / 2 / Z;                        // the screen shows exactly the front of the case
-    Object.assign(win, { x0: -hw, x1: hw, y0: Y0, y1: Y0 + 2 * hh });
+    visW = winH * (w / h);                                         // the whole case, side walls included, fills the screen exactly
+    Object.assign(win, { x0: -visW / 2, x1: visW / 2, y0: Y0, y1: H + TOP });
     camera.aspect = w / h; camBase.set(0, H * CAM_Y, d2); aimCamera();
     return true;
   }
