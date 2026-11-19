@@ -445,9 +445,6 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col = mix(col, cL * .6, pore * .22);
   float fleck = smoothstep(.9, .97, wn(vec3(p.x * .45 + 3., p.yz * 2.6)));   // the odd small dark fleck
   col = mix(col, vec3(.4, .19, .06), fleck * .5);                  // tiny pin knots, warm brown
-  // natural imperfections: sparse orange mineral streaks, drawn out along the grain and broken up
-  float mk = smoothstep(.8, .93, wn(vec3(p.x * .14 + 11., p.yz * 1.1))) * smoothstep(.4, .75, wn(vec3(p.x * .8 + 4., p.yz * 5.)));
-  col = mix(col, vec3(.48, .23, .07), mk * .7);
   col *= mix(.18, 1., seam) * uTone;
   hgt = -late * .18 - pore * .22 + fibre * .06 - (1. - seam) * 2.5;
   rgh = .34 + late * .06 + pore * .12 - (fibre - .5) * .05 + (streak - .5) * .06;
