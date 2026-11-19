@@ -443,8 +443,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col *= .97 + fibre * .06;                                         // hairline fibres kept faint: straight thin lines crawl on screens
   col *= 1. - fine * .03;
   col = mix(col, cL * .6, pore * .22);
-  float fleck = smoothstep(.9, .97, wn(vec3(p.x * .45 + 3., p.yz * 2.6)));   // the odd small dark fleck
-  col = mix(col, vec3(.4, .19, .06), fleck * .5);                  // tiny pin knots, warm brown
+                 // tiny pin knots, warm brown
   col *= mix(.18, 1., seam) * uTone;
   hgt = -late * .18 - pore * .22 + fibre * .06 - (1. - seam) * 2.5;
   rgh = .34 + late * .06 + pore * .12 - (fibre - .5) * .05 + (streak - .5) * .06;
@@ -456,7 +455,23 @@ let WOOD_ENV = null;
 // (fronts, back panel), B = faces looking down onto it (shelf tops, post sides).
 const WB = { A: { u0: -64, lu: 128, v0: -85, lv: 170, w: 1024, h: 4096, c: 0 },
              B: { u0: -64, lu: 128, v0: -26, lv: 64, w: 1024, h: 1536, c: 1 } };
-let WOOD_A = null, WOOD_B = null, WOOD_GRAIN = null;
+let WOOD_A = null, WOOD_B = null, WOOD_GRAIN = null, WOOD_SCRATCH = null;
+function scratchTex(renderer) {   // fine, faint, everyday scuffs: short strokes at random angles, a few long ones
+  const n = 1024, c = cnv(n, n), x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, n, n);
+  let z = 98765; const r = () => ((z = (z * 1103515245 + 12345) >>> 0) / 4294967296);
+  x.lineCap = 'round';
+  for (let i = 0; i < 150; i++) {
+    const long = r() < .12, len = long ? 120 + r() * 260 : 12 + r() * 60, a = r() * Math.PI, px = r() * n, py = r() * n;
+    const bend = (r() - .5) * len * .25;
+    x.strokeStyle = `rgba(255,255,255,${(long ? .45 : .7) * (.45 + r() * .55)})`; x.lineWidth = 2.2 + r() * 2.2;
+    for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) {   // tile seamlessly
+      const sx = px + ox, sy = py + oy, ex = sx + Math.cos(a) * len, ey = sy + Math.sin(a) * len;
+      x.beginPath(); x.moveTo(sx, sy); x.quadraticCurveTo((sx + ex) / 2 - Math.sin(a) * bend, (sy + ey) / 2 + Math.cos(a) * bend, ex, ey); x.stroke();
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t;
+}
 function grainTex(renderer) {   // tiling random specks, mipmapped so they average out instead of sparkling
   const n = 256, d = new Uint8Array(n * n * 4);
   let x = 1234567; const r = () => ((x = (x * 1103515245 + 12345) >>> 0) / 4294967296);
@@ -496,11 +511,11 @@ function bakeWood(renderer) {
   }
   renderer.setRenderTarget(null); mat.dispose();
   [WOOD_A, WOOD_B] = out;
-  WOOD_GRAIN = grainTex(renderer);
+  WOOD_GRAIN = grainTex(renderer); WOOD_SCRATCH = scratchTex(renderer);
 }
 const WOOD_SAMPLE = /* glsl */`
 uniform float uAxis; uniform vec3 uSeed; uniform float uTone;
-uniform sampler2D uWoodA, uWoodB, uGrain; uniform vec4 uRA, uRB;
+uniform sampler2D uWoodA, uWoodB, uGrain, uScratch; uniform vec4 uRA, uRB;
 varying vec3 vWoodP; varying vec3 vWoodN;
 vec4 wTex(sampler2D t, vec4 r, vec2 uv){ return texture2D(t, (uv - r.xz) / r.yw); }
 void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
@@ -514,18 +529,21 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   col = s.rgb * s.rgb * uTone;
   const float GS = 1. / 16.;                                    // grain tile = 16 units, ~0.06 units per speck
   float g = w.z * texture2D(uGrain, p.xy * GS).r + w.y * texture2D(uGrain, p.xz * GS).r + w.x * texture2D(uGrain, p.zy * GS).r;
-  col *= 1. + (g - .5) * .05;                                   // fine grain that belongs to the wood
+  col *= 1. + (g - .5) * .05;
+  const float SS = 1. / 22.;                                    // light scratches, random angles, filtered so they never crawl
+  float sc = .5 * w.z * texture2D(uScratch, p.xy * SS + .31).r + w.y * texture2D(uScratch, p.xz * SS).r + w.x * texture2D(uScratch, p.zy * SS + .7).r;
+  col = mix(col, col * 1.5 + .025, sc);                                   // fine grain that belongs to the wood
   hgt = (s.a - .7) / 1.5;
   rgh = .36 - hgt * .3;
 }
 `;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(.79, .754, .65);   // blond maple, a shade deeper; the light stays white so books keep true colours
+  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.037, .986, .85);   // blond maple, a shade deeper; the light stays white so books keep true colours
   { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
-    sh.uniforms.uWoodA = { value: WOOD_A }; sh.uniforms.uWoodB = { value: WOOD_B }; sh.uniforms.uGrain = { value: WOOD_GRAIN };
+    sh.uniforms.uWoodA = { value: WOOD_A }; sh.uniforms.uWoodB = { value: WOOD_B }; sh.uniforms.uGrain = { value: WOOD_GRAIN }; sh.uniforms.uScratch = { value: WOOD_SCRATCH };
     sh.uniforms.uRA = { value: new THREE.Vector4(WB.A.u0, WB.A.lu, WB.A.v0, WB.A.lv) }; sh.uniforms.uRB = { value: new THREE.Vector4(WB.B.u0, WB.B.lu, WB.B.v0, WB.B.lv) };
     sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
     sh.vertexShader = 'varying vec3 vWoodP; varying vec3 vWoodN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWoodP = position; vWoodN = normal;');
@@ -799,7 +817,7 @@ export async function createShelf3D(el, opts) {
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
-  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, .8); }
+  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, axis ? .8 : .64); }   // shelf boards catch more light, so they're toned to match the back
   function buildCase() {
     caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { if (m === ironMat || m === brassEdge) return; m.map && m.map.dispose?.(); m.dispose(); }); } });
     caseGroup.clear();
