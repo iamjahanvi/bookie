@@ -140,25 +140,25 @@ function clothCanvas(seed = 3) {
   x.putImageData(im, 0, 0); return c;
 }
 // Soft occlusion wherever two surfaces meet. Stops follow a quick, exponential-like falloff, as real contact shadow does.
-const AO = 'rgba(28,13,4,';
+const AO = 'rgba(64,30,10,';   // multiplied over the wood: a warm darkening that keeps colour and grain
 function aoGrad(x, x0, y0, x1, y1, stops) { const g = x.createLinearGradient(x0, y0, x1, y1); stops.forEach(([t, a]) => g.addColorStop(t, AO + a + ')')); return g; }
 const FALL = (a, span) => [[0, a], [span * .12, a * .62], [span * .3, a * .32], [span * .6, a * .1], [span, 0], [1, 0]];
 function aoCanvas() {   // back wall of a compartment
-  const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
+  const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, 0, 0, h, [[0, .96], [.05, .8], [.12, .55], [.24, .28], [.4, .1], [.6, 0], [1, 0]]); x.fillRect(0, 0, w, h);   // short, strong shadow under the shelf above
   x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.22, .08)); x.fillRect(0, 0, w, h);                     // barely any where it meets the shelf floor
   x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(.88, .2)); x.fillRect(0, 0, w, h);                      // left corner
   x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.88, .2)); x.fillRect(0, 0, w, h); return c;            // right corner
 }
 function aoSideCanvas() {   // inside face of a side wall: u = 0 front .. 1 back
-  const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
-  x.fillStyle = AO + '.5)'; x.fillRect(0, 0, w, h);                                              // side walls sit in shade all the way along
+  const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
+  { const g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, AO + '0)'); g.addColorStop(.22, AO + '.42)'); g.addColorStop(1, AO + '.5)'); x.fillStyle = g; x.fillRect(0, 0, w, h); }   // in shade along the wall, easing out at the front edge
   x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.55, .6)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.6, .3)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.4, .2)); x.fillRect(0, 0, w, h); return c;
 }
 function aoFlatCanvas(a, span = .55) {   // a shelf floor or ceiling seen from inside: canvas top = back wall
-  const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
+  const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(a, span)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(a * .7, .12)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(a * .7, .12)); x.fillRect(0, 0, w, h); return c;
@@ -626,6 +626,8 @@ export async function createShelf3D(el, opts) {
   let dpr = DPR_MAX; renderer.setPixelRatio(dpr);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
+  renderer.localClippingEnabled = true;
+  const BOOK_CLIP = [new THREE.Plane(new THREE.Vector3(1, 0, 0), 25), new THREE.Plane(new THREE.Vector3(-1, 0, 0), 25)];   // the side walls
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
   el.appendChild(renderer.domElement);
   bakeWood(renderer);
@@ -655,7 +657,7 @@ export async function createShelf3D(el, opts) {
   key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 12; key.shadow.intensity = .72;   // books cast real, soft shadows
   scene.add(key, key.target);
   const bounces = [];
-  const fill = { intensity: 0 };   // soft front fill removed: the key light and room light do the work
+  const fill = new THREE.DirectionalLight(0xfff6ea, 0); fill.position.set(0, H * .5, 220); scene.add(fill);   // light from the screen side, only when the shelf bulbs are on
   const rake = new THREE.DirectionalLight(0xfffaf4, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
@@ -827,7 +829,7 @@ export async function createShelf3D(el, opts) {
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0);
     bounces.forEach(l => l.intensity = lamps ? .55 : .45);
-    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps;   // shelf lights on = room light off fill.intensity = 0; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);
+    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps; fill.intensity = lamps ? 1.5 : 0; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);   // shelf lights on = room key light off, screen-side light on
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
@@ -846,16 +848,16 @@ export async function createShelf3D(el, opts) {
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
       const innerW = visW - 2 * 1.2;   // between the side posts, so the corner shading is actually visible
-      const ao = new THREE.Mesh(new THREE.PlaneGeometry(innerW, HC), new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }));
+      const ao = new THREE.Mesh(new THREE.PlaneGeometry(innerW, HC), new THREE.MeshBasicMaterial({ blending: THREE.MultiplyBlending, premultipliedAlpha: true, toneMapped: false, map: aoTex, transparent: true, depthWrite: false }));
       ao.position.set(0, base + HC / 2, -DEPTH + .05); caseGroup.add(ao);
       [-1, 1].forEach(sgn => {
-        const sm = new THREE.MeshBasicMaterial({ map: aoSideTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+        const sm = new THREE.MeshBasicMaterial({ blending: THREE.MultiplyBlending, premultipliedAlpha: true, toneMapped: false, map: aoSideTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
         const side = new THREE.Mesh(new THREE.PlaneGeometry(DEPTH, HC), sm);
         side.rotation.y = sgn < 0 ? Math.PI / 2 : -Math.PI / 2; if (sgn > 0) side.scale.x = -1;   // dark end always at the back
         side.position.set(sgn * (innerW / 2 - .03), base + HC / 2, -DEPTH / 2); caseGroup.add(side);
       });
       for (const [y, t] of [[base + .03, aoFloorTex], [base + HC - .03, aoCeilTex]]) {   // shelf floor by the back wall, and the shelf's underside
-        const f = new THREE.Mesh(new THREE.PlaneGeometry(innerW, DEPTH), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+        const f = new THREE.Mesh(new THREE.PlaneGeometry(innerW, DEPTH), new THREE.MeshBasicMaterial({ blending: THREE.MultiplyBlending, premultipliedAlpha: true, toneMapped: false, map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
         f.rotation.x = -Math.PI / 2; f.position.set(0, y, -DEPTH / 2); caseGroup.add(f);
       }
     }
@@ -903,8 +905,8 @@ export async function createShelf3D(el, opts) {
       const q = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); q.position.set(wide ? 0 : -visW / 2 + 1.2 + 1.3 + ww / 2, PL / 2 + .1, .32); q.renderOrder = 3; caseGroup.add(q);
     }
     // plinth
-    const pm = new THREE.Mesh(RBox(bw, PL, 3, .4), boardMat(bw, 10)); 
-    pm.position.set(0, PL / 2, -1.2); pm.receiveShadow = true; caseGroup.add(pm);
+    const pm = new THREE.Mesh(RBox(bw, PL + .45, 3, .12), boardMat(bw, 10)); 
+    pm.position.set(0, (PL + .45) / 2 - .02, -.52); pm.receiveShadow = true; caseGroup.add(pm);   // rises into the bottom shelf's rounded edge: a fine seam, not a dark groove
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(bw, 80), new THREE.MeshStandardMaterial({ color: '#3a2414', roughness: 1 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 20); caseGroup.add(floor);
     // brass label plates
@@ -1153,6 +1155,7 @@ export async function createShelf3D(el, opts) {
     const shared = new Set([pagesMat, edgeAOMat, floorAOMat, ironMat, contactMat]);
     booksGroup.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => !shared.has(m) && m.dispose()); });
     geoms.forEach(g => g.dispose()); geoms.length = 0; booksGroup.clear();
+    BOOK_CLIP[0].constant = BOOK_CLIP[1].constant = visW / 2 - 1.2;   // inner face of each side post
     rows = ROWS.map((st, j) => {
       const base = PL + BT + j * (HC + BT);
       const list = books.filter(b => (b.status || 'reading') === st);
@@ -1172,8 +1175,9 @@ export async function createShelf3D(el, opts) {
         mesh.position.set(dims.t / 2, dims.h / 2, 0);
         pivot.add(mesh);
         if (faceOut) {   // cover facing out, books side by side, like a shop display
-          pivot.position.set(x + dims.d / 2, base, -4.2 - dims.t - ((hv >>> 4) % 6) * .08);
-          pivot.rotation.y = -Math.PI / 2 + ((hv % 5) - 2) * .01;
+          const lean = -.1 - (hv % 4) * .008;                           // tipped back, top resting on the back wall
+          pivot.position.set(x + dims.d / 2, base, -DEPTH + .15 - dims.h * Math.sin(lean));
+          pivot.rotation.set(lean, -Math.PI / 2 + ((hv % 5) - 2) * .01, 0);
         } else {
         pivot.position.set(x, base, -1.4 - dims.d / 2 - ((hv >>> 4) % 10) * .09);
         pivot.rotation.y = ((hv % 5) - 2) * .012;
@@ -1191,7 +1195,7 @@ export async function createShelf3D(el, opts) {
         if (faceOut) aos.forEach(q => q.visible = false);
         // tight, dark shadow right where the book stands; the cast shadow softens further out
         const cs = new THREE.Mesh(new THREE.PlaneGeometry(dims.t + 2.2, dims.d + 2.4), contactMat); geoms.push(cs.geometry);
-        cs.rotation.x = -Math.PI / 2; cs.position.set(dims.t / 2, .025, 0); cs.renderOrder = 1; pivot.add(cs); pivot.userData.contact = cs;
+        cs.rotation.x = -Math.PI / 2; cs.position.set(dims.t / 2, .025, 0); cs.renderOrder = 1; pivot.add(cs); pivot.userData.contact = cs; if (faceOut) cs.visible = false;
         x += faceOut ? dims.d + .9 : dims.t + .02 + (hv % 9 === 0 ? .1 : 0);
         pivot.userData = { id: b.id, home: pivot.position.clone(), rot: pivot.rotation.clone(), d: dims.d };
         g.add(pivot); items.push(pivot);
@@ -1238,6 +1242,7 @@ export async function createShelf3D(el, opts) {
           cs.userData.lean = true; p.userData.contactFlat = cs; }
         p.userData.home = p.position.clone(); p.userData.rot = p.rotation.clone();
       }
+      g.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => { m.clippingPlanes = BOOK_CLIP; m.clipShadows = true; }); });
       const row = { st, group: g, items, base, contentW, offset: 0, vel: 0 };
       row.min = Math.min(0, visW - 3.7 - contentW); return row;
     });
@@ -1395,8 +1400,23 @@ export async function createShelf3D(el, opts) {
     el,
     update(nextBooks, nextView) {
       const before = new Set(books.map(b => b.id)), first = !primed; primed = true;
+      const switching = !first && nextView !== view, was = new Map();
+      if (switching) rows.forEach(r => r.items.forEach(p => was.set(p.userData.id, { p: p.position.clone(), r: p.rotation.clone() })));
       books = nextBooks.slice(); view = nextView; rebuild();
       if (first) return;
+      if (switching) {   // each book turns from spine-out to cover-out (or back) in place, in a quick ripple along the shelf
+        sfx.place?.();
+        rows.forEach(r => r.items.forEach((p, i) => {
+          const o = was.get(p.userData.id); if (!o) return;
+          const home = p.userData.home, rot = p.userData.rot, d = i * 45 + rows.indexOf(r) * 60;
+          p.position.copy(o.p); p.rotation.copy(o.r); p.position.z += 0;
+          tween(p.position, 'z', home.z + 2.5, 240, d);                 // slide forward a little to turn
+          tween(p.position, 'x', home.x, 560, d); tween(p.position, 'y', home.y, 560, d);
+          tween(p.rotation, 'x', rot.x, 560, d + 120); tween(p.rotation, 'y', rot.y, 560, d); tween(p.rotation, 'z', rot.z, 560, d);
+          tween(p.position, 'z', home.z, 380, d + 260);
+        }));
+        return;
+      }
       for (const b of books) if (!before.has(b.id)) {
         const p = findPivot(b.id); if (!p) continue;
         const row = rows.find(r => r.items.includes(p)), hx = p.userData.home.x;
