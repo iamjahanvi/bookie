@@ -145,14 +145,14 @@ function aoGrad(x, x0, y0, x1, y1, stops) { const g = x.createLinearGradient(x0,
 const FALL = (a, span) => [[0, a], [span * .12, a * .62], [span * .3, a * .32], [span * .6, a * .1], [span, 0], [1, 0]];
 function aoCanvas() {   // back wall of a compartment
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
-  x.fillStyle = aoGrad(x, 0, 0, 0, h, [[0, .92], [.04, .7], [.1, .4], [.2, .18], [.34, .06], [.5, 0], [1, 0]]); x.fillRect(0, 0, w, h);   // short, strong shadow under the shelf above
+  x.fillStyle = aoGrad(x, 0, 0, 0, h, [[0, .96], [.05, .8], [.12, .55], [.24, .28], [.4, .1], [.6, 0], [1, 0]]); x.fillRect(0, 0, w, h);   // short, strong shadow under the shelf above
   x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.22, .08)); x.fillRect(0, 0, w, h);                     // barely any where it meets the shelf floor
-  x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(.7, .14)); x.fillRect(0, 0, w, h);                      // left corner
-  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.7, .14)); x.fillRect(0, 0, w, h); return c;            // right corner
+  x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(.88, .2)); x.fillRect(0, 0, w, h);                      // left corner
+  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.88, .2)); x.fillRect(0, 0, w, h); return c;            // right corner
 }
 function aoSideCanvas() {   // inside face of a side wall: u = 0 front .. 1 back
   const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
-  x.fillStyle = AO + '.42)'; x.fillRect(0, 0, w, h);                                              // side walls sit in shade all the way along
+  x.fillStyle = AO + '.5)'; x.fillRect(0, 0, w, h);                                              // side walls sit in shade all the way along
   x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.55, .6)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.6, .3)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.4, .2)); x.fillRect(0, 0, w, h); return c;
@@ -652,7 +652,7 @@ export async function createShelf3D(el, opts) {
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0xe6dccf, 0.3); scene.add(hemi);
   const key = new THREE.DirectionalLight(0xfffaf4, 2.7); key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 5; key.shadow.blurSamples = 8; key.shadow.intensity = .42;
+  key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 7; key.shadow.blurSamples = 12; key.shadow.intensity = .72;   // books cast real, soft shadows
   scene.add(key, key.target);
   const bounces = [];
   const fill = { intensity: 0 };   // soft front fill removed: the key light and room light do the work
@@ -827,7 +827,7 @@ export async function createShelf3D(el, opts) {
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0);
     bounces.forEach(l => l.intensity = lamps ? .55 : .45);
-    key.intensity = lamps ? 1.5 : 3.0; fill.intensity = 0; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);
+    key.intensity = lamps ? 0 : 3.0; key.castShadow = !lamps;   // shelf lights on = room light off fill.intensity = 0; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
@@ -842,7 +842,7 @@ export async function createShelf3D(el, opts) {
     const bm = woodMaterial(1, 77, 0, .86, 1);   // grain runs up the back, like the iBooks case   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
-    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false); const aoFloorTex = tex(aoFlatCanvas(.72, .85), false)   /* shelf top darkens toward the back, like iBooks */, aoCeilTex = tex(aoFlatCanvas(.75), false);
+    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false); const aoFloorTex = tex(aoFlatCanvas(.72, .85), false)   /* shelf top darkens toward the back, like iBooks */, aoCeilTex = tex(aoFlatCanvas(.9), false);
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
       const innerW = visW - 2 * 1.2;   // between the side posts, so the corner shading is actually visible
@@ -942,7 +942,7 @@ export async function createShelf3D(el, opts) {
     }
     applyLamps();
     // light
-    key.position.set(visW * .12 + 3, H + 170, 95); key.target.position.set(0, H / 2, -DEPTH / 2);
+    key.position.set(visW * .5 + 95, H + 95, 105);   // upper right, so books throw visible shadows onto the back wall key.target.position.set(0, H / 2, -DEPTH / 2);
     const sc = key.shadow.camera; const R = Math.max(W, H) * .9 + 40; sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 400; sc.updateProjectionMatrix();
   }
 
@@ -1224,8 +1224,8 @@ export async function createShelf3D(el, opts) {
         p.position.x = prevRight + Math.min(dims.h * Math.sin(a), hPrev * Math.tan(a)) + dims.t * Math.cos(a) + .03; p.rotation.z = a;
         p.position.y += dims.t * Math.sin(a);
         if (p.userData.contact) { p.userData.contact.visible = false; p.userData.contact = null; }
-        // the lifted, leaning book only casts a faint shadow: a full one floats off as a dark blob
-        m.traverse(o => { if (o.isMesh) o.castShadow = false; });
+        // the leaning book casts its own soft shadow onto the shelf and its neighbour
+        m.traverse(o => { if (o.isMesh) o.castShadow = true; });
         { const cs = new THREE.Mesh(new THREE.PlaneGeometry(dims.t + 1.4, dims.d + 1.6), contactMat); geoms.push(cs.geometry);
           cs.rotation.x = -Math.PI / 2; cs.position.set(prevRight + dims.t * .55, base + .025, p.position.z); cs.renderOrder = 1; cs.material = contactMat; cs.scale.set(1, 1, 1); g.add(cs);
           cs.userData.lean = true; p.userData.contactFlat = cs; }
