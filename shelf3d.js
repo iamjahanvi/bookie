@@ -145,15 +145,16 @@ function aoGrad(x, x0, y0, x1, y1, stops) { const g = x.createLinearGradient(x0,
 const FALL = (a, span) => [[0, a], [span * .12, a * .62], [span * .3, a * .32], [span * .6, a * .1], [span, 0], [1, 0]];
 function aoCanvas() {   // back wall of a compartment
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
-  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.9, .5)); x.fillRect(0, 0, w, h);                       // under the shelf above
-  x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.6, .16)); x.fillRect(0, 0, w, h);                      // where it meets the shelf floor
-  x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(.8, .28)); x.fillRect(0, 0, w, h);                      // left corner
-  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.8, .28)); x.fillRect(0, 0, w, h); return c;            // right corner
+  x.fillStyle = aoGrad(x, 0, 0, 0, h, [[0, .92], [.04, .7], [.1, .4], [.2, .18], [.34, .06], [.5, 0], [1, 0]]); x.fillRect(0, 0, w, h);   // short, strong shadow under the shelf above
+  x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.22, .08)); x.fillRect(0, 0, w, h);                     // barely any where it meets the shelf floor
+  x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(.7, .14)); x.fillRect(0, 0, w, h);                      // left corner
+  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.7, .14)); x.fillRect(0, 0, w, h); return c;            // right corner
 }
 function aoSideCanvas() {   // inside face of a side wall: u = 0 front .. 1 back
   const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
-  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.8, .75)); x.fillRect(0, 0, w, h);
-  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.6, .35)); x.fillRect(0, 0, w, h);
+  x.fillStyle = AO + '.42)'; x.fillRect(0, 0, w, h);                                              // side walls sit in shade all the way along
+  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.55, .6)); x.fillRect(0, 0, w, h);
+  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.6, .3)); x.fillRect(0, 0, w, h);
   x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.4, .2)); x.fillRect(0, 0, w, h); return c;
 }
 function aoFlatCanvas(a) {   // a shelf floor or ceiling seen from inside: canvas top = back wall
@@ -470,7 +471,7 @@ function scratchTex(renderer) {   // fine, faint, everyday scuffs: short strokes
   const n = 1024, c = cnv(n, n), x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, n, n);
   let z = 98765; const r = () => ((z = (z * 1103515245 + 12345) >>> 0) / 4294967296);
   x.lineCap = 'round';
-  for (let i = 0; i < 55; i++) {
+  for (let i = 0; i < 22; i++) {
     const long = r() < .12, len = long ? 120 + r() * 260 : 12 + r() * 60, a = r() * Math.PI, px = r() * n, py = r() * n;
     const bend = (r() - .5) * len * .25;
     x.strokeStyle = `rgba(255,255,255,${(long ? .45 : .7) * (.45 + r() * .55)})`; x.lineWidth = 2.2 + r() * 2.2;
@@ -827,7 +828,7 @@ export async function createShelf3D(el, opts) {
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
-  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, axis ? .8 : .64); }   // shelf boards catch more light, so they're toned to match the back
+  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, axis ? .8 : .5); }   // shelf boards catch more light, so they're toned to match the back
   function buildCase() {
     caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { if (m === ironMat || m === brassEdge) return; m.map && m.map.dispose?.(); m.dispose(); }); } });
     caseGroup.clear();
@@ -838,7 +839,7 @@ export async function createShelf3D(el, opts) {
     const bm = woodMaterial(1, 77, 0, .86, 1);   // grain runs up the back, like the iBooks case   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
-    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false); const aoFloorTex = tex(aoFlatCanvas(.6), false), aoCeilTex = tex(aoFlatCanvas(.75), false);
+    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false); const aoFloorTex = tex(aoFlatCanvas(.25), false), aoCeilTex = tex(aoFlatCanvas(.75), false);
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
       const innerW = visW - 2 * 1.2;   // between the side posts, so the corner shading is actually visible
