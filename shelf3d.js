@@ -159,7 +159,7 @@ function rgbOf(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 25
 function shade(hex, k) { return '#' + rgbOf(hex).map(v => Math.max(0, Math.min(255, Math.round(v * k))).toString(16).padStart(2, '0')).join(''); }
 function hashStr(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 
-const PPU = 52; // texture pixels per world unit (sharper small titles)
+const PPU = 64; // texture pixels per world unit (sharper small titles)
 const FONTS = {
   serif: w => `600 ${w}px Fraunces, Georgia, serif`,
   serifIt: w => `italic 500 ${w}px "Playfair Display", Fraunces, Georgia, serif`,
@@ -295,7 +295,7 @@ function spineCanvas(b, dims, col) {
   return c;
 }
 function coverCanvas(b, col) {
-  const w = 300, h = 450, c = cnv(w, h), x = c.getContext('2d');
+  const w = 300, h = 450, c = cnv(w * 2, h * 2), x = c.getContext('2d'); x.scale(2, 2);   // drawn at 2x for sharpness
   x.fillStyle = col.bg; x.fillRect(0, 0, w, h);
   const g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(0,0,0,.3)'); g.addColorStop(.06, 'rgba(255,255,255,.08)'); g.addColorStop(.1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, h);
   x.fillStyle = col.fg; x.font = '500 34px Fraunces, Georgia, serif';
@@ -502,7 +502,8 @@ export async function createShelf3D(el, opts) {
   try { await Promise.all(['500 40px Fraunces', '800 100px Fraunces', '500 20px "IBM Plex Mono"'].map(f => document.fonts.load(f))); } catch { }
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-  let dpr = Math.min(window.devicePixelRatio || 1, 1.5); renderer.setPixelRatio(dpr);
+  const DPR_MAX = Math.min(window.devicePixelRatio || 1, 2.5), DPR_MIN = Math.min(DPR_MAX, 2);
+  let dpr = DPR_MAX; renderer.setPixelRatio(dpr);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
@@ -593,7 +594,7 @@ export async function createShelf3D(el, opts) {
     if (typeof window.DeviceOrientationEvent?.requestPermission === 'function') el.addEventListener('pointerdown', startOri, { once: true });   // iPhone asks first
     else startOri();
     if (matchMedia('(hover: hover)').matches) el.addEventListener('pointermove', e => {     // a mouse does the same on a computer
-      const r = el.getBoundingClientRect(); tilt.tx = ((e.clientX - r.left) / r.width - .5) * 1.4; tilt.ty = -((e.clientY - r.top) / r.height - .5) * 1.4;
+      if (pulled) return; const r = el.getBoundingClientRect(); tilt.tx = ((e.clientX - r.left) / r.width - .5) * 1.4; tilt.ty = -((e.clientY - r.top) / r.height - .5) * 1.4;
     });
   }
   function frame() {
@@ -695,11 +696,12 @@ export async function createShelf3D(el, opts) {
     });
     return g;
   }
+  const SHOW_PLANT = false;
   function placePlant() {
     plantGroup.traverse(o => { if (o.userData.temp) o.geometry.dispose(); }); plantGroup.clear();
     let best = null;
     for (const r of rows) { const free = visW - 3.7 - r.contentW; if (free >= 12 && (!best || free > best.free + .5)) best = { r, free }; }
-    if (best) plantGroup.add(buildPlant(visW / 2 - 1.2 - 3.4, best.r.base));
+    if (SHOW_PLANT && best) plantGroup.add(buildPlant(visW / 2 - 1.2 - 3.4, best.r.base));
   }
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0);
@@ -1190,11 +1192,14 @@ export async function createShelf3D(el, opts) {
       if (r.offset > 0 || r.offset < r.min) { const target = r.offset > 0 ? 0 : r.min; r.offset += (target - r.offset) * .18; if (Math.abs(target - r.offset) < .01) r.offset = target; r.group.position.x = r.offset; r.vel *= .5; needs = true; }
     }
     let moved = false;
-    if ((Math.abs(tilt.tx - tilt.x) > .006 || Math.abs(tilt.ty - tilt.y) > .006) && real - lastTilt > 30) { lastTilt = real; tilt.x += (tilt.tx - tilt.x) * .22; tilt.y += (tilt.ty - tilt.y) * .22; aimCamera(); moved = true; }
+    // while a book is out and its page is open, the view eases back to centre and holds still
+    const gx = pulled ? 0 : tilt.tx, gy = pulled ? 0 : tilt.ty;
+    if ((Math.abs(gx - tilt.x) > .006 || Math.abs(gy - tilt.y) > .006) && real - lastTilt > 30) { lastTilt = real; tilt.x += (gx - tilt.x) * .22; tilt.y += (gy - tilt.y) * .22; aimCamera(); moved = true; }
+    else if (pulled && (tilt.x || tilt.y) && Math.abs(tilt.x) <= .006 && Math.abs(tilt.y) <= .006) { tilt.x = tilt.y = 0; aimCamera(); moved = true; }
     if (paused) return;
     if (needs || moved) {
       if (lastDraw && real - lastDraw < 60) { slowFrames = real - lastDraw > 28 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
-        if (slowFrames > 24 && dpr > 1) { dpr = Math.max(1, dpr - .25); renderer.setPixelRatio(dpr); frame(); slowFrames = 0; needs = true; } }
+        if (slowFrames > 24 && dpr > DPR_MIN) { dpr = Math.max(DPR_MIN, dpr - .25); renderer.setPixelRatio(dpr); frame(); slowFrames = 0; needs = true; } }
       lastDraw = real;
     }
     if (needs) { renderer.shadowMap.needsUpdate = true; renderer.render(scene, camera); needs = false; }   // the scene changed: refresh shadows too
