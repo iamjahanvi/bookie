@@ -456,7 +456,15 @@ let WOOD_ENV = null;
 // (fronts, back panel), B = faces looking down onto it (shelf tops, post sides).
 const WB = { A: { u0: -64, lu: 128, v0: -85, lv: 170, w: 1024, h: 4096, c: 0 },
              B: { u0: -64, lu: 128, v0: -26, lv: 64, w: 1024, h: 1536, c: 1 } };
-let WOOD_A = null, WOOD_B = null;
+let WOOD_A = null, WOOD_B = null, WOOD_GRAIN = null;
+function grainTex(renderer) {   // tiling random specks, mipmapped so they average out instead of sparkling
+  const n = 256, d = new Uint8Array(n * n * 4);
+  let x = 1234567; const r = () => ((x = (x * 1103515245 + 12345) >>> 0) / 4294967296);
+  for (let i = 0; i < n * n; i++) { const v = Math.round(255 * Math.min(1, Math.max(0, .5 + (r() + r() - 1) * .75))); d.set([v, v, v, 255], i * 4); }
+  const t = new THREE.DataTexture(d, n, n); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.needsUpdate = true; return t;
+}
 function bakeWood(renderer) {
   if (WOOD_A) return;
   const cap = renderer.capabilities.maxTextureSize || 4096;
@@ -488,12 +496,12 @@ function bakeWood(renderer) {
   }
   renderer.setRenderTarget(null); mat.dispose();
   [WOOD_A, WOOD_B] = out;
+  WOOD_GRAIN = grainTex(renderer);
 }
 const WOOD_SAMPLE = /* glsl */`
 uniform float uAxis; uniform vec3 uSeed; uniform float uTone;
-uniform sampler2D uWoodA, uWoodB; uniform vec4 uRA, uRB;
+uniform sampler2D uWoodA, uWoodB, uGrain; uniform vec4 uRA, uRB;
 varying vec3 vWoodP; varying vec3 vWoodN;
-float wGrain(vec2 c){ vec3 p = fract(vec3(c.xyx) * .1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
 vec4 wTex(sampler2D t, vec4 r, vec2 uv){ return texture2D(t, (uv - r.xz) / r.yw); }
 void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   vec3 p = (uAxis < .5 ? P.xyz : P.yxz) + uSeed;
@@ -504,22 +512,25 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   if (w.y > .002) s += w.y * wTex(uWoodB, uRB, p.xz);         // looking down onto it
   if (w.x > .002) s += w.x * wTex(uWoodA, uRA, p.zy);         // end grain
   col = s.rgb * s.rgb * uTone;
+  const float GS = 1. / 16.;                                    // grain tile = 16 units, ~0.06 units per speck
+  float g = w.z * texture2D(uGrain, p.xy * GS).r + w.y * texture2D(uGrain, p.xz * GS).r + w.x * texture2D(uGrain, p.zy * GS).r;
+  col *= 1. + (g - .5) * .05;                                   // fine grain that belongs to the wood
   hgt = (s.a - .7) / 1.5;
   rgh = .36 - hgt * .3;
 }
 `;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.62, 1.6, 1.42);   // pale blond maple; the light stays white so books keep true colours
+  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.46, 1.42, 1.25);   // blond maple, a shade deeper; the light stays white so books keep true colours
   { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
     sh.uniforms.uAxis = { value: axis }; sh.uniforms.uPlank = { value: plank }; sh.uniforms.uTone = { value: tone };
-    sh.uniforms.uWoodA = { value: WOOD_A }; sh.uniforms.uWoodB = { value: WOOD_B };
+    sh.uniforms.uWoodA = { value: WOOD_A }; sh.uniforms.uWoodB = { value: WOOD_B }; sh.uniforms.uGrain = { value: WOOD_GRAIN };
     sh.uniforms.uRA = { value: new THREE.Vector4(WB.A.u0, WB.A.lu, WB.A.v0, WB.A.lv) }; sh.uniforms.uRB = { value: new THREE.Vector4(WB.B.u0, WB.B.lu, WB.B.v0, WB.B.lv) };
     sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
     sh.vertexShader = 'varying vec3 vWoodP; varying vec3 vWoodN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWoodP = position; vWoodN = normal;');
     sh.fragmentShader = WOOD_SAMPLE + sh.fragmentShader
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol * diffuse; diffuseColor.rgb *= 1. + (wGrain(floor(gl_FragCoord.xy / 1.4)) - .5) * .13;   // fine film grain, fixed to the screen so it never crawls')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol * diffuse;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(wR, .25, 1.);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 wdx = dFdx(-vViewPosition), wdy = dFdy(-vViewPosition); float hx = dFdx(wH), hy = dFdy(wH);
