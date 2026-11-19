@@ -654,7 +654,7 @@ export async function createShelf3D(el, opts) {
   key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.04; key.shadow.radius = 5; key.shadow.blurSamples = 8; key.shadow.intensity = .42;
   scene.add(key, key.target);
   const bounces = [];
-  const fill = new THREE.DirectionalLight(0xfffaf4, 0.25); fill.position.set(0, H * .45, 200); scene.add(fill);
+  const fill = { intensity: 0 };   // soft front fill removed: the key light and room light do the work
   const rake = new THREE.DirectionalLight(0xfffaf4, 0.35); rake.position.set(160, H * .6, 70); scene.add(rake);
 
   const aniso = renderer.capabilities.getMaxAnisotropy();
@@ -826,7 +826,7 @@ export async function createShelf3D(el, opts) {
   function applyLamps() {
     lampObjs.forEach(o => o.visible = lamps); lampPucks.forEach(m => m.emissiveIntensity = lamps ? .9 : 0);
     bounces.forEach(l => l.intensity = lamps ? .55 : .45);
-    key.intensity = lamps ? 1.5 : 3.0; fill.intensity = lamps ? .22 : .32; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);
+    key.intensity = lamps ? 1.5 : 3.0; fill.intensity = 0; rake.intensity = lamps ? .1 : .35; hemi.intensity = lamps ? .55 : .3; hemi.color.set(lamps ? 0xfff0dc : 0xffffff);
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
