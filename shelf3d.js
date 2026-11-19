@@ -519,7 +519,7 @@ function woodMaterial(axis, seed, plank = 0, tone = 1) {
     sh.uniforms.uSeed = { value: new THREE.Vector3((seed * 37.7) % 211, (seed * 7.3) % 17, (seed * 3.1) % 13) };
     sh.vertexShader = 'varying vec3 vWoodP; varying vec3 vWoodN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWoodP = position; vWoodN = normal;');
     sh.fragmentShader = WOOD_SAMPLE + sh.fragmentShader
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol * diffuse; diffuseColor.rgb *= 1. + (wGrain(floor(gl_FragCoord.xy / 2.)) - .5) * .13;   // fine film grain, fixed to the screen so it never crawls')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  vec3 wCol; float wH; float wR; woodEval(vWoodP, wCol, wH, wR); diffuseColor.rgb = wCol * diffuse; diffuseColor.rgb *= 1. + (wGrain(floor(gl_FragCoord.xy / 1.4)) - .5) * .13;   // fine film grain, fixed to the screen so it never crawls')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = clamp(wR, .25, 1.);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 wdx = dFdx(-vViewPosition), wdy = dFdy(-vViewPosition); float hx = dFdx(wH), hy = dFdy(wH);
