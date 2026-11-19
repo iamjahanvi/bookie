@@ -432,7 +432,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   q.yz += (wn(vec3(p.x * .1, p.yz * .9)) - .5) * .06;
   q.yz += (wfbm(vec3(p.x * .035, p.yz * .12)) - .5) * .55;        // long, gentle drift: never ruler-straight, never blobby
   q.yz += (wn(vec3(p.x * .22, p.yz * .5)) - .5) * .08;             // slight, quick unevenness in each line
-  float r = length(q.yz - vec2(2., -34.)) * 2.3;                   // wider rings: grain lines several pixels thick                   // distance from the pith
+  float r = length(q.yz - vec2(2., -34.)) * 4.4;                   // wider rings: grain lines several pixels thick                   // distance from the pith
   // Anti-aliasing: every detail fades out once it's finer than a couple of screen pixels,
   // so the grain stays still instead of shimmering when the view shifts a fraction of a pixel.
   float fw = length(fwidth(p.yz)) * .55, rw = fwidth(r) * .55;   // baked: keep detail up to the texture's limit, mipmaps do the rest
@@ -447,12 +447,14 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   float pore = smoothstep(.83, .92, wn(vec3(p.x * 1.4, p.yz * 24.))) * (1. - .6 * late) * aP;   // open pores, drawn out along the grain
   float streak = wfbm(vec3(p.x * .01, p.yz * .3));               // long heartwood streaks
   vec3 cE = vec3(.43, .27, .135), cL = vec3(.31, .185, .085), cW = vec3(.52, .35, .18), cG = vec3(.36, .26, .16);
-  col = mix(cE, cL * .92, late * (.3 + .25 * yr));   // calm, low-contrast figure
+  col = mix(cE, cL * .92, late * (.17 + .15 * yr));   // calm, low-contrast figure
   col *= .9 + yr * .2;
   col = mix(col, cG, smoothstep(.5, .8, streak) * .4);
   col = mix(col, cW, smoothstep(.5, .2, streak) * .35);
-  col *= .97 + fibre * .06;                                         // hairline fibres kept faint: straight thin lines crawl on screens
-  col *= 1. - fine * .03;
+  col *= .94 + fibre * .12;
+  float stri = wn(vec3(p.x * .1, p.yz * 4.6)) * .7 + wn(vec3(p.x * .16 + 9., p.yz * 6.5)) * .3;   // dense fine striations, like iBooks maple
+  col *= .88 + stri * .24;                                         // hairline fibres kept faint: straight thin lines crawl on screens
+  col *= 1. - fine * .06;
   col = mix(col, cL * .6, pore * .22);
                  // tiny pin knots, warm brown
   col *= mix(.18, 1., seam) * uTone;
@@ -549,7 +551,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 }
 `;
 function woodMaterial(axis, seed, plank = 0, tone = 1, scratch = 0) {
-  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(2.42, 2.72, 2.9);   // blond maple, a shade deeper; the light stays white so books keep true colours
+  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.55, 1.25, .9);   /* light maple */   // blond maple, a shade deeper; the light stays white so books keep true colours
   { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
@@ -828,7 +830,7 @@ export async function createShelf3D(el, opts) {
     scene.environmentIntensity = (envLoaded ? .6 : .45) * (lamps ? .55 : 1); needs = true;
   }
   let woodSeed = 0;
-  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, axis ? .23 : .78); }   // shelf boards catch more light, so they're toned to match the back
+  function boardMat(lenU, depthU, axis = 0) { return woodMaterial(axis, ++woodSeed, 0, .8); }   // shelf boards catch more light, so they're toned to match the back
   function buildCase() {
     caseGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); [].concat(o.material).forEach(m => { if (m === ironMat || m === brassEdge) return; m.map && m.map.dispose?.(); m.dispose(); }); } });
     caseGroup.clear();
