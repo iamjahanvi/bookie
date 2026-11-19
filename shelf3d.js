@@ -520,7 +520,7 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
 }
 `;
 function woodMaterial(axis, seed, plank = 0, tone = 1) {
-  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(1.22, 1.16, 1.0);   // blond maple, a shade deeper; the light stays white so books keep true colours
+  const m = new THREE.MeshStandardMaterial({ roughness: .34, metalness: 0 }); m.color.setRGB(.79, .754, .65);   // blond maple, a shade deeper; the light stays white so books keep true colours
   { const q = new URLSearchParams(location.search).get('wood'); if (q) { const v = q.split(',').map(Number); if (v.length === 3) m.color.setRGB(v[0], v[1], v[2]); } }   // preview tints: ?wood=r,g,b   // deep warm brown; the light stays white so books keep true colours
   m.envMap = WOOD_ENV; m.envMapIntensity = .9;
   m.onBeforeCompile = sh => {
