@@ -601,7 +601,7 @@ export async function createShelf3D(el, opts) {
     const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return false;
     renderer.setSize(w, h, false);
     const d = (H / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2)), yc = H * CAM_Y, fullH = h * (2 * yc / H);
-    const Y0 = .3, TOP = .35, dock = document.querySelector('.dock');   // TOP: the thick top board and a sliver above it
+    const Y0 = .3, TOP = -.15, dock = document.querySelector('.dock');   // TOP: the thick top board and a sliver above it
     let need = 110;   // px from the bottom of the screen to the bottom of the lowest shelf
     if (dock) { const r = dock.getBoundingClientRect(), gap = Math.max(14, innerHeight - r.bottom); need = (innerHeight - r.top) + gap - 11; }
     const f = need / h, rest = BT + 3 * (HC + BT) + TOP;
