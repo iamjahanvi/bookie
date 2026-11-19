@@ -139,19 +139,28 @@ function clothCanvas(seed = 3) {
   }
   x.putImageData(im, 0, 0); return c;
 }
-function aoCanvas() {   // back of a compartment: dark under the shelf above, into both corners, and a little at the bottom
+// Soft occlusion wherever two surfaces meet. Stops follow a quick, exponential-like falloff, as real contact shadow does.
+const AO = 'rgba(28,13,4,';
+function aoGrad(x, x0, y0, x1, y1, stops) { const g = x.createLinearGradient(x0, y0, x1, y1); stops.forEach(([t, a]) => g.addColorStop(t, AO + a + ')')); return g; }
+const FALL = (a, span) => [[0, a], [span * .12, a * .62], [span * .3, a * .32], [span * .6, a * .1], [span, 0], [1, 0]];
+function aoCanvas() {   // back wall of a compartment
   const w = 256, h = 256, c = cnv(w, h), x = c.getContext('2d');
-  let g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(35,18,5,.78)'); g.addColorStop(.12, 'rgba(35,18,5,.36)'); g.addColorStop(.4, 'rgba(0,0,0,0)'); g.addColorStop(.75, 'rgba(30,15,5,0)'); g.addColorStop(.93, 'rgba(30,15,5,.16)'); g.addColorStop(1, 'rgba(30,15,5,.34)');
-  x.fillStyle = g; x.fillRect(0, 0, w, h);
-  g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(30,15,5,.62)'); g.addColorStop(.06, 'rgba(30,15,5,.3)'); g.addColorStop(.2, 'rgba(0,0,0,0)'); g.addColorStop(.8, 'rgba(0,0,0,0)'); g.addColorStop(.94, 'rgba(30,15,5,.3)'); g.addColorStop(1, 'rgba(30,15,5,.62)');
-  x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
+  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.9, .5)); x.fillRect(0, 0, w, h);                       // under the shelf above
+  x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.6, .16)); x.fillRect(0, 0, w, h);                      // where it meets the shelf floor
+  x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(.8, .28)); x.fillRect(0, 0, w, h);                      // left corner
+  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.8, .28)); x.fillRect(0, 0, w, h); return c;            // right corner
 }
-function aoSideCanvas() {   // inside face of a side wall: darkest in the back corner, fading toward the front edge
+function aoSideCanvas() {   // inside face of a side wall: u = 0 front .. 1 back
   const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
-  let g = x.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.45, 'rgba(30,15,5,.1)'); g.addColorStop(.85, 'rgba(30,15,5,.36)'); g.addColorStop(1, 'rgba(30,15,5,.55)');
-  x.fillStyle = g; x.fillRect(0, 0, w, h);
-  g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(30,15,5,.4)'); g.addColorStop(.18, 'rgba(0,0,0,0)');
-  x.fillStyle = g; x.fillRect(0, 0, w, h); return c;
+  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(.8, .75)); x.fillRect(0, 0, w, h);
+  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(.6, .35)); x.fillRect(0, 0, w, h);
+  x.fillStyle = aoGrad(x, 0, h, 0, 0, FALL(.4, .2)); x.fillRect(0, 0, w, h); return c;
+}
+function aoFlatCanvas(a) {   // a shelf floor or ceiling seen from inside: canvas top = back wall
+  const w = 256, h = 128, c = cnv(w, h), x = c.getContext('2d');
+  x.fillStyle = aoGrad(x, 0, 0, 0, h, FALL(a, .55)); x.fillRect(0, 0, w, h);
+  x.fillStyle = aoGrad(x, 0, 0, w, 0, FALL(a * .7, .12)); x.fillRect(0, 0, w, h);
+  x.fillStyle = aoGrad(x, w, 0, 0, 0, FALL(a * .7, .12)); x.fillRect(0, 0, w, h); return c;
 }
 function pagesCanvas() {
   const c = cnv(512, 64), x = c.getContext('2d'), h = hash2(77);
@@ -420,7 +429,8 @@ void woodEval(vec3 P, out vec3 col, out float hgt, out float rgh){
   vec3 q = p;
   q.yz += (wfbm(vec3(p.x * .018, p.yz * .14)) - .5) * 1.3;         // the trunk is never straight
   q.yz += (wn(vec3(p.x * .1, p.yz * .9)) - .5) * .06;
-  q.yz += (wfbm(vec3(p.x * .07, p.yz * .22)) - .5) * 1.1;         // grain meanders along the board, so no line runs straight
+  q.yz += (wfbm(vec3(p.x * .035, p.yz * .12)) - .5) * .55;        // long, gentle drift: never ruler-straight, never blobby
+  q.yz += (wn(vec3(p.x * .22, p.yz * .5)) - .5) * .08;             // slight, quick unevenness in each line
   float r = length(q.yz - vec2(2., -34.)) * 2.3;                   // wider rings: grain lines several pixels thick                   // distance from the pith
   // Anti-aliasing: every detail fades out once it's finer than a couple of screen pixels,
   // so the grain stays still instead of shimmering when the view shifts a fraction of a pixel.
@@ -828,7 +838,7 @@ export async function createShelf3D(el, opts) {
     const bm = woodMaterial(1, 77, 0, .86, 1);   // grain runs up the back, like the iBooks case   // tongue-and-groove back, grain running up
     const back = new THREE.Mesh(new THREE.PlaneGeometry(W, BH), bm); back.position.set(0, H / 2, -DEPTH); back.receiveShadow = true; caseGroup.add(back);
     // soft occlusion in each compartment
-    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false);
+    const aoTex = tex(aoCanvas(), false); const aoSideTex = tex(aoSideCanvas(), false); const aoFloorTex = tex(aoFlatCanvas(.6), false), aoCeilTex = tex(aoFlatCanvas(.75), false);
     for (let j = 0; j < 3; j++) {
       const base = PL + BT + j * (HC + BT);
       const innerW = visW - 2 * 1.2;   // between the side posts, so the corner shading is actually visible
@@ -840,6 +850,10 @@ export async function createShelf3D(el, opts) {
         side.rotation.y = sgn < 0 ? Math.PI / 2 : -Math.PI / 2; if (sgn > 0) side.scale.x = -1;   // dark end always at the back
         side.position.set(sgn * (innerW / 2 - .03), base + HC / 2, -DEPTH / 2); caseGroup.add(side);
       });
+      for (const [y, t] of [[base + .03, aoFloorTex], [base + HC - .03, aoCeilTex]]) {   // shelf floor by the back wall, and the shelf's underside
+        const f = new THREE.Mesh(new THREE.PlaneGeometry(innerW, DEPTH), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+        f.rotation.x = -Math.PI / 2; f.position.set(0, y, -DEPTH / 2); caseGroup.add(f);
+      }
     }
     // boards
     const bw = W;
